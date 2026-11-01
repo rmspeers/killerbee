@@ -135,3 +135,10 @@ def test_pnext_autostart_and_multi_packet():
     dev.reads = [f[:64], f[64:]]
     r = d.pnext()
     assert r is not None and r["validcrc"]
+
+
+@pytest.mark.parametrize("chan", [0, 10, 27, 100])
+def test_set_channel_invalid(chan):
+    d, _ = mk()
+    with pytest.raises(Exception, match="Invalid channel"):
+        d.set_channel(chan)

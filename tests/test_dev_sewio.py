@@ -232,7 +232,6 @@ def test_parse_zep_variants():
     assert parse(struct.pack("<HBB", 22597, 2, 9) + b"\x00" * 30) is None
 
 
-@pytest.mark.xfail(strict=False, reason="py3 bug: ord() applied to int in __parse_zep_v2 when CRC/LQI mode == 0")
 def test_parse_zep_crcmode0():
     parse = SEWIO._SEWIO__parse_zep_v2
     frame, ch, valid, rssi, lqi, _ = parse(zep_data(crcmode=0, payload=b"abc\xb1\x85"))
@@ -249,7 +248,6 @@ def test_pnext(env, monkeypatch):
     assert d.pnext() is None  # timeout
 
 
-@pytest.mark.xfail(strict=False, reason="py3 bug: pnext() unpacks None when __parse_zep_v2 returns None for unknown ZEP type")
 def test_pnext_unknown_zep_type(env):
     d = mk(env)
     d.sniffer_on()
@@ -266,3 +264,8 @@ def test_pnext_dbm(env, monkeypatch, rssi, dbm):
                         staticmethod(lambda data: (b"f", 11, True, rssi, 1, None)))
     d.handle.queue = [(b"x", (IP, 1))]
     assert d.pnext()["dbm"] == dbm
+
+
+@pytest.mark.parametrize("chan,mod", [(11, "0"), (26, "0"), (1, "c"), (10, "c"), (128, "1c"), (131, "1c"), (0, "0"), (50, None)])
+def test_default_modulation(chan, mod):
+    assert SEWIO._SEWIO__get_default_modulation(chan) == mod

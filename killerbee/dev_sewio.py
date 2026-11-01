@@ -12,7 +12,6 @@
 import os # type: ignore
 import time # type: ignore
 import struct # type: ignore
-import time # type: ignore
 import urllib3 # type: ignore
 import re # type: ignore
 from socket import socket, AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_REUSEADDR, timeout as error_timeout # type: ignore
@@ -282,9 +281,9 @@ class SEWIO:
         http://www.sewio.net/open-sniffer/develop/http-rest-interface/
         @rtype: String, or None if unable to determine modulation
         '''
-        if channel >= 11 or channel <= 26: return '0'   #O-QPSK 250 kb/s 2.4GHz
-        elif channel >= 1 or channel <= 10: return 'c'  #O-QPSK 250 kb/s 915MHz
-        elif channel >= 128 or channel <= 131: return '1c' #O-QPSK 250 kb/s 760MHz
+        if 11 <= channel <= 26: return '0'              #O-QPSK 250 kb/s 2.4GHz
+        elif 1 <= channel <= 10: return 'c'             #O-QPSK 250 kb/s 915MHz
+        elif 128 <= channel <= 131: return '1c'         #O-QPSK 250 kb/s 760MHz
         elif channel == 0: return '0'                   #O-QPSK 100 kb/s 868MHz
         else: return None                               #Error status
 
@@ -398,8 +397,8 @@ class SEWIO:
             # A length vs len(frame) check is not used here but is an 
             #  additional way to verify that all is good (length == len(frame)).
             if crcmode == 0:
-                validcrc = ((ord(data[-1]) & 0x80) == 0x80)
-                rssi = ord(data[-2])
+                validcrc = ((data[-1] & 0x80) == 0x80)
+                rssi = data[-2]
                 # We have to trust the sniffer that the FCS was OK, so we compute
                 #  what a good FCS should be and patch it back into the packet.
                 frame = frame[:-2] + makeFCS(frame[:-2])
@@ -409,7 +408,7 @@ class SEWIO:
             return (frame, ch, validcrc, rssi, lqival, recdtime)
         elif zeptype == 2: #ack
             frame = data[8:]
-            (seqnum) = unpack(">I", data[4:8])
+            (seqnum,) = unpack(">I", data[4:8])
             recdtime = datetime.utcnow()
             validcrc = (frame[-2:] == makeFCS(frame[:-2]))
             return (frame, None, validcrc, None, None, recdtime)
@@ -442,15 +441,13 @@ class SEWIO:
             if addr[0] != self.dev:
                 continue
             # Dissect the UDP packet
-            (frame, ch, validcrc, rssi, lqival, recdtime) = self.__parse_zep_v2(data)
-            if frame == None:  # or (ch is not None and ch != self._channel):
+            parsed = self.__parse_zep_v2(data)
+            if parsed is None:
                 #TODO: Sort out situations for error vs warning
-                print("WARN: ZEP parsing issue (bytes length={0}, channel={1}).".format(len(frame) if frame is not None else None, ch))
+                print("WARN: ZEP parsing issue (unsupported ZEP type, {0} bytes).".format(len(data)))
                 continue
+            (frame, ch, validcrc, rssi, lqival, recdtime) = parsed
             break
-
-        if frame is None:
-            return None
 
         #Return in a nicer dictionary format, so we don't have to reference by number indicies.
         #Note that 0,1,2 indicies inserted twice for backwards compatibility.

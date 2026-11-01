@@ -9,14 +9,12 @@ from killerbee.kbutils import KBCapabilities
 
 
 class FakeSerial:
-    """Scripted serial port. `reactions` maps exact written values to lines queued in response."""
+    """Scripted pyserial-like port (bytes only). `reactions` maps exact written values to lines queued in response."""
 
-    def __init__(self, text=True, strict=False, **kw):
+    def __init__(self, **kw):
         self.kw = kw
-        self.text = text
-        self.strict = strict
         self.queue = []
-        self.default = ">" if text else b">"
+        self.default = b">"
         self.reactions = {}
         self.written = []
         self.closed = False
@@ -26,8 +24,8 @@ class FakeSerial:
         pass
 
     def write(self, data):
-        if self.strict and isinstance(data, str):
-            raise TypeError("a bytes-like object is required, not 'str'")
+        if not isinstance(data, (bytes, bytearray)):
+            raise TypeError("a bytes-like object is required, not '%s'" % type(data).__name__)
         self.written.append(data)
         for k, v in self.reactions.items():
             if data == k:
@@ -64,7 +62,7 @@ def mk_bh(monkeypatch, **kw):
     h = install(monkeypatch, bh, **kw)
     d = SL_BEEHIVE("/dev/ttyACM0")
     s = h["s"]
-    s.reactions = {"rx 1": "Rx:Enabled", "rx 0": "Rx:Disabled"}
+    s.reactions = {b"rx 1": b"Rx:Enabled", b"rx 0": b"Rx:Disabled"}
     return d, s
 
 
@@ -86,12 +84,12 @@ def test_bh_basic(monkeypatch):
 def test_bh_channel_and_cmd_failure(monkeypatch):
     d, s = mk_bh(monkeypatch)
     d.set_channel(15)
-    assert "setchannel 15" in s.written
+    assert b"setchannel 15" in s.written
     d.set_channel(15, 31)
-    assert "915MHz" in s.written and "setchannel %d" % ((31 << 5 & 0xFF) + 15) in s.written
+    assert b"915MHz" in s.written and b"setchannel %d" % ((31 << 5 & 0xFF) + 15) in s.written
     d.set_channel(15, 28)
-    assert "863MHz" in s.written
-    s.default = ""
+    assert b"863MHz" in s.written
+    s.default = b""
     with pytest.raises(Exception, match="Could not send command"):
         d.set_channel(12)
 
@@ -99,7 +97,7 @@ def test_bh_channel_and_cmd_failure(monkeypatch):
 def test_bh_sniffer_cycle(monkeypatch):
     d, s = mk_bh(monkeypatch)
     d.sniffer_on(channel=12)
-    assert "BeeHiveOptions 1 1 1 1" in s.written
+    assert b"BeeHiveOptions 1 1 1 1" in s.written
     d.sniffer_on(channel=12, page=0)  # already open
     d.sniffer_off()
     # failure to start
@@ -115,22 +113,18 @@ def test_bh_sniffer_cycle(monkeypatch):
         d3.sniffer_off()
 
 
-@pytest.mark.xfail(strict=False, reason="bug: sniffer_on() with no channel calls set_channel(None) -> '%d' % None TypeError")
 def test_bh_sniffer_on_no_channel(monkeypatch):
     d, s = mk_bh(monkeypatch)
     d.sniffer_on()
-
-
-@pytest.mark.xfail(strict=False, reason="py3 bug: SL_BEEHIVE writes str to pyserial (needs bytes)")
-def test_bh_strict_serial_bytes(monkeypatch):
-    d, s = mk_bh(monkeypatch, strict=True)
-    d.set_channel(12)
+    assert not any(w.startswith(b"setchannel") for w in s.written)
+    d.sniffer_off()
+    d.inject(b"\x01", count=1)  # no channel given: must not touch channel either
+    assert not any(w.startswith(b"setchannel") for w in s.written)
 
 
 PKT = "{{(rxPacket)}{len:6}{timeUs:99}{crc:Pass}{rssi:-44}{lqi:210}{phy:0}{isAck:False}{syncWordId:0}{antenna:0}{payload: 0x05 0x01 0x02 0x03 0x04 0x05 }"
 
 
-@pytest.mark.xfail(strict=False, reason="bug: __dissect_pkt reads crc from the rssi field (index 4) so validcrc is always False")
 def test_bh_dissect_crc(monkeypatch):
     d, _ = mk_bh(monkeypatch)
     assert d._SL_BEEHIVE__dissect_pkt(PKT)[2] is True
@@ -140,46 +134,32 @@ def test_bh_dissect(monkeypatch):
     d, _ = mk_bh(monkeypatch)
     dis = d._SL_BEEHIVE__dissect_pkt
     rssi, out, crc = dis(PKT)
-    assert out == "\x01\x02\x03\x04\x05" and rssi == "-44"
+    assert out == b"\x01\x02\x03\x04\x05" and rssi == -44 and crc is True
+    assert dis(PKT.replace("crc:Pass", "crc:Fail"))[2] is False
     assert dis("garbage") == (None, None, None)
     assert dis(PKT.replace(" 0x05 0x01", " 0x09 0x01")) == (None, None, None)  # bad length
     assert dis(PKT.replace("0x03", "0xZZ")) == (None, None, None)  # bad byte
-    assert dis("{a:b:c:d:e:f:g:h:i:j:}") == (None, None, None)  # empty payload
+    assert dis(PKT.replace("0x03", "0x103")) == (None, None, None)  # not a byte
+    assert dis(PKT.replace("rssi:-44", "rssi:abc")) == (None, None, None)  # bad rssi
+    assert dis(PKT.replace("{crc:Pass}", "")) == (None, None, None)  # missing field
+    assert dis("{a:b:c:d:e:f:g:h:i:j:}") == (None, None, None)  # no payload
+    assert dis("{payload: }") == (None, None, None)  # empty payload
 
 
 def test_bh_pnext(monkeypatch):
     d, s = mk_bh(monkeypatch)
     d.sniffer_on(channel=12)
-    s.default = ""
+    s.default = b""
     assert d.pnext() is None  # timeout (empty line)
-    monkeypatch.setattr(SL_BEEHIVE, "_SL_BEEHIVE__dissect_pkt", lambda self, p: ("-44", "abc", True))
-    s.queue = ["pkt"]
+    s.queue = [PKT.encode()]
     r = d.pnext()
-    assert r["rssi"] == -44 and r["bytes"] == "abc" and r["validcrc"] and r["location"] == (None, None, None)
-    monkeypatch.setattr(SL_BEEHIVE, "_SL_BEEHIVE__dissect_pkt", lambda self, p: ("bad", "abc", True))
-    s.queue = ["pkt"]
+    assert r["rssi"] == -44 and r["bytes"] == b"\x01\x02\x03\x04\x05" and r["validcrc"] is True
+    assert r[0] == r["bytes"] and r[1] is True and r[2] == -44
+    assert r["location"] == (None, None, None)
+    s.queue = [b"junk"]
     assert d.pnext() is None
-    monkeypatch.setattr(SL_BEEHIVE, "_SL_BEEHIVE__dissect_pkt", lambda self, p: (None, None, None))
-    s.queue = ["pkt"]
+    s.queue = [PKT.replace("rssi:-44", "rssi:bad").encode()]
     assert d.pnext() is None
-
-
-@pytest.mark.xfail(strict=False, reason="bug: crc parsed from rssi field, so validcrc is always False")
-def test_bh_pnext_real_packet(monkeypatch):
-    d, s = mk_bh(monkeypatch)
-    d.sniffer_on(channel=12)
-    s.default = ""
-    s.queue = [PKT]
-    assert d.pnext()["validcrc"] is True
-
-
-class HexStr(str):
-    """str whose .encode('hex') works, emulating py2 semantics the driver expects."""
-    def encode(self, enc="utf-8"):
-        return "ab" * len(self)
-
-    def __getitem__(self, i):
-        return HexStr(str.__getitem__(self, i))
 
 
 def test_bh_inject(monkeypatch):
@@ -188,20 +168,22 @@ def test_bh_inject(monkeypatch):
         d.inject(b"")
     with pytest.raises(Exception, match="too long"):
         d.inject(b"a" * 128)
-    d.inject(HexStr("x" * 3), channel=12, count=2)
-    d.inject(HexStr("x" * 120), channel=12)
-    assert "setTxLength 120" in s.written
-
-
-@pytest.mark.xfail(strict=False, reason="py3 bug: inject() uses packet.encode('hex'), unavailable for bytes/str in py3")
-def test_bh_inject_bytes(monkeypatch):
-    d, s = mk_bh(monkeypatch)
-    d.inject(b"\x01\x02\x03", channel=12)
+    d.inject(b"\x01\x02\x03", channel=12, count=2)
+    assert b"setTxLength 3" in s.written
+    assert b"setTxPayload 00 03010203" in s.written
+    assert s.written.count(b"tx 1") == 2
+    # long packets are split in two payload writes
+    s.written.clear()
+    pkt = bytes(range(120))
+    d.inject(pkt, channel=12)
+    assert b"setTxLength 120" in s.written
+    assert b"setTxPayload 00 78" + pkt[:118].hex().encode() in s.written
+    assert b"setTxPayload 119 " + pkt[118:].hex().encode() in s.written
 
 
 # ---------------------------------------------------------------- NodeTest
 def mk_nt(monkeypatch):
-    h = install(monkeypatch, nt, text=False)
+    h = install(monkeypatch, nt)
     d = SL_NODETEST("/dev/ttyACM1")
     s = h["s"]
     s.reactions = {b"rx": b"{payload}", b"e": b"test end"}
@@ -232,7 +214,7 @@ def test_nt_inject_after_cap(monkeypatch):
         d.inject(b"")
     with pytest.raises(Exception, match="too long"):
         d.inject(b"a" * 126)
-    with pytest.raises(TypeError):  # str join with bytes: py3 bug before NotImplemented
+    with pytest.raises(Exception, match="Not yet"):
         d.inject(b"abc", channel=12)
 
 
@@ -294,3 +276,11 @@ def test_jammer_on_with_cap(monkeypatch):
     d.capabilities.setcapab(KBCapabilities.PHYJAM, True)
     with pytest.raises(Exception, match="Not yet"):
         d.jammer_on(channel=12)
+
+
+def test_nt_dissect_malformed(monkeypatch):
+    d, _ = mk_nt(monkeypatch)
+    dis = d._SL_NODETEST__dissect_pkt
+    assert dis(b"{short}") is None  # too few fields
+    assert dis(nt_line().replace(b"03 0x01", b"zz 0x01", 1)) is None  # bad length field
+    assert dis(nt_line(payload=(1,)).replace(b"0x01", b"0x1ff")) is None  # not a byte

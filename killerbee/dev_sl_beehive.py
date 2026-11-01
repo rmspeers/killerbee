@@ -4,13 +4,11 @@ Author: Adam Laurie <adam@algroup.co.uk> aka RFIDiot
 
 '''
 
-import usb # type: ignore
 import serial # type: ignore
+import re # type: ignore
 import time # type: ignore
-import struct # type: ignore
-from datetime import datetime, date # type: ignore
-from datetime import time as dttime # type: ignore
-from .kbutils import KBCapabilities, makeFCS # type: ignore
+from datetime import datetime # type: ignore
+from .kbutils import KBCapabilities # type: ignore
 
 MODE_NONE    = 0x01
 MODE_SNIFF   = 0x02
@@ -30,8 +28,10 @@ class SL_BEEHIVE:
         self.date = None
         self.lon, self.lat, self.alt = (None, None, None)
         self.__stream_open = False
+        self.mode = MODE_NONE
         self.handle = serial.Serial(port=self.dev, baudrate=115200, \
                                     timeout=.02, bytesize=8, parity='N', stopbits=1, xonxoff=0)
+
         self.capabilities = KBCapabilities()
         self.__set_capabilities()
 
@@ -76,34 +76,38 @@ class SL_BEEHIVE:
         '''
         return [self.dev, "BeeHive SG", ""]
 
+    def __readline(self):
+        '''
+        Reads one line from the serial port, returned as a stripped string.
+        (pySerial deals in bytes, but the device speaks ASCII text.)
+        '''
+        return self.handle.readline().decode('ascii', errors='replace').strip()
+
     def __send_cmd(self, cmdstr, arg=None, confirm= True, send_return= True, extra_delay= 0, initial_read= 3):
         # read any cruft
-        #time.sleep(0.1)
         for x in range(initial_read):
             self.handle.readline()
 
         # some commands require us to be in idle, so do it always
-        self.handle.write("rx 0\r")
+        self.handle.write(b"rx 0\r")
         time.sleep(0.02)
         for x in range(3):
             self.handle.readline()
 
-        if arg != None:
+        if arg is not None:
             cmdstr += ' ' + arg
-        self.handle.write(cmdstr)
+        self.handle.write(cmdstr.encode('ascii'))
         if send_return:
-            self.handle.write('\r')
-        #time.sleep(0.1)
+            self.handle.write(b'\r')
         time.sleep(extra_delay)
         if confirm:
-            ret= False
+            ret = False
             for x in range(100):
-                d= self.handle.readline().strip()
-                if d[-1:] == '>':
-                    ret= True
+                if self.__readline().endswith('>'):
+                    ret = True
                     break
         else:
-            ret= True
+            ret = True
 
         if not ret:
             raise Exception('Could not send command %s' % cmdstr)
@@ -112,29 +116,24 @@ class SL_BEEHIVE:
         '''
         internal routine to deconstruct serial text received from device
         packet will be in the format: "{{(rxPacket)}{len:11}{timeUs:994524212}{crc:Pass}{rssi:-44}{lqi:210}{phy:0}{isAck:False}{syncWordId:0}{antenna:0}{payload: 0x0a 0x03 0x08 0xba 0xff 0xff }"
+        @type packet: String
+        @rtype: Tuple
+        @return: (rssi as Int, frame as Bytes, Bool: Valid CRC), or (None, None, None) if the packet can not be parsed.
         '''
+        # Collect the "{name:value}" fields
+        fields = dict(re.findall(r'\{(\w+):([^{}]*)\}', packet))
         try:
-            data = packet.replace('}','').split(':')[10].split()
-        except:
-            return None, None, None
-        if not data:
-            return None, None, None
-        # payload is in the form e.g. "0x03 0x08 0xA3 0xFF 0xFF 0xFF 0xFF 0x07" so we need to convert to a string
-        out = ''
-        # first byte is length
-        if len(data) != int(data[0], 16) + 1:
-            return None, None, None
-        for x in data[1:]:
-            try:
-                out += chr(int(x, 16))
-            except:
+            data = fields['payload'].split()
+            # payload is in the form e.g. "0x03 0x08 0xA3 0xFF 0xFF 0xFF 0xFF 0x07"
+            # and the first byte is the length of the rest
+            if not data or len(data) != int(data[0], 16) + 1:
                 return None, None, None
-        try:
-            crc = packet.replace('}','').split(':')[4].split('{')[0] == 'Pass'
-            rssi = packet.replace('}','').split(':')[4].split('{')[0]
-        except:
+            frame = bytes(int(x, 16) for x in data[1:])
+            crc = fields['crc'] == 'Pass'
+            rssi = int(fields['rssi'])
+        except (KeyError, ValueError):  # missing field, bad hex/int, or byte out of range
             return None, None, None
-        return rssi, out, crc
+        return rssi, frame, crc
 
     # KillerBee expects the driver to implement this function
     def sniffer_on(self, channel=None, page=0):
@@ -148,7 +147,7 @@ class SL_BEEHIVE:
         '''
         self.capabilities.require(KBCapabilities.SNIFF)
 
-        if channel != None or page:
+        if channel is not None:
             self.set_channel(channel, page)
 
         if not self.__stream_open:
@@ -157,7 +156,7 @@ class SL_BEEHIVE:
             # start sniffer
             self.__send_cmd("rx", "1", confirm= False)
             for x in range(5):
-                d = self.handle.readline()
+                d = self.__readline()
                 if 'Rx:Enabled' in d:
                     self.mode = MODE_SNIFF
                     self.__stream_open = True
@@ -177,7 +176,7 @@ class SL_BEEHIVE:
         self.handle.timeout= 0.2
         self.__send_cmd("rx", "0", confirm= False, initial_read= 0)
         for x in range(3):
-            d= self.handle.readline().strip()
+            d = self.__readline()
             if "Rx:Disabled" in d:
                 self.mode = MODE_NONE
                 self.__stream_open = False
@@ -188,7 +187,8 @@ class SL_BEEHIVE:
     def __init_radio(self):
         self.__send_cmd("reset", extra_delay = 0.6)
         self.__send_cmd("rx", "0")
-        self.set_channel(self._channel, self._page)
+        if self._channel is not None:
+            self.set_channel(self._channel, self._page)
         self.__send_cmd("BeeHiveMode", "1")
         self.__send_cmd("BeeHiveOptions", "1 1 1 1")
 
@@ -224,7 +224,7 @@ class SL_BEEHIVE:
     def inject(self, packet, channel=None, count=1, delay=0, page=0):
         '''
         Injects the specified packet contents.
-        @type packet: String
+        @type packet: Bytes
         @param packet: Packet contents to transmit, with FCS.
         @type channel: Integer
         @param channel: Sets the channel, optional
@@ -241,10 +241,9 @@ class SL_BEEHIVE:
         if len(packet) > 127:
             raise Exception('Packet too long')
 
-        if channel != None or page:
+        if channel is not None:
             self.set_channel(channel, page)
 
-        # 
         self.__send_cmd("setTxLength", "%d" % len(packet))
         maxp = 118
         # we can send max 256 bytes over the wire so we must split large packets due to hex doubling the size
@@ -252,9 +251,9 @@ class SL_BEEHIVE:
             tosend = maxp
         else:
             tosend = len(packet) 
-        self.__send_cmd("setTxPayload", "00 %02x%s" % ((len(packet)), packet[:tosend].encode('hex')))
+        self.__send_cmd("setTxPayload", "00 %02x%s" % (len(packet), packet[:tosend].hex()))
         if len(packet) > maxp:
-            self.__send_cmd("setTxPayload", "%d %s" % (tosend + 1, packet[tosend:].encode('hex')))
+            self.__send_cmd("setTxPayload", "%d %s" % (tosend + 1, packet[tosend:].hex()))
         for pnum in range(0, count):
             self.__send_cmd("tx", "1", confirm= False)
             time.sleep(delay)
@@ -263,29 +262,23 @@ class SL_BEEHIVE:
     #TODO I suspect that if you don't call this often enough while getting frames, the serial buffer may overflow.
     def pnext(self, timeout=1):
         '''
-        Returns packet data as a string, else None.
+        Returns a dictionary of packet data, else None.
         @type timeout: Integer
         @param timeout: Timeout to wait for packet reception in usec
         @rtype: List
         @return: Returns None is timeout expires and no packet received.  When a packet is received,
-                 a list is returned, in the form [ String: packet contents | Bool: Valid CRC | Int: Unscaled RSSI ]
+                 a dictionary is returned (keys 0/'bytes': packet contents, 1/'validcrc': Valid CRC, 2/'rssi': Int Unscaled RSSI, 'dbm', 'datetime', 'location')
         '''
         if not self.__stream_open:
             self.sniffer_on() #start sniffing
 
         self.handle.timeout=timeout         # Allow pySerial to handle timeout
-        packet = self.handle.readline().strip()
+        packet = self.__readline()
         if packet == '':
             return None   # Sense timeout case and return
 
         rssi, frame, validcrc = self.__dissect_pkt(packet)
-        if not frame:
-            print("Error parsing stream received from device:", packet)
-
-        # Parse received data as <rssi>!<time>!<packtlen>!<frame>
-        try:
-            rssi = int(rssi)
-        except:
+        if frame is None:
             print("Error parsing stream received from device:", packet)
             return None
         #Return in a nicer dictionary format, so we don't have to reference by number indicies.
@@ -313,7 +306,7 @@ class SL_BEEHIVE:
         '''
         self.capabilities.require(KBCapabilities.PHYJAM)
 
-        if channel != None or page:
+        if channel is not None:
             self.set_channel(channel, page)
 
         #TODO implement

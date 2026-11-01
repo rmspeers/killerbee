@@ -133,3 +133,10 @@ def test_pnext():
     assert r["rssi"] == -16 and r["lqi"] == 5 and r["validcrc"]
     assert r[0].startswith(b"\x01\x02\x03") and len(r[0]) == 5
     assert r["bytes"] == r[0]
+
+
+@pytest.mark.parametrize("chan", [0, 10, 27, 100])
+def test_set_channel_invalid(chan):
+    d, _ = mk()
+    with pytest.raises(Exception, match="Invalid channel"):
+        d.set_channel(chan)

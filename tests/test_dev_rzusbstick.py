@@ -125,7 +125,7 @@ def test_write_errors():
 def test_read_errors():
     d, dev = mk()
     dev.read_exc = usb.core.USBError("t", errno=110)
-    with pytest.raises(TypeError):  # response None -> subscript
+    with pytest.raises(Exception, match="No response"):  # read timed out
         d._set_mode()
     dev.read_exc = usb.core.USBError("bad", errno=5)
     with pytest.raises(usb.core.USBError):
@@ -194,7 +194,7 @@ def test_pnext_single():
     d, dev = mk()
     dev.reads = [ac_pkt(b"\xaa\xbb\x77")]
     r = d.pnext()
-    assert r[0] == b"\xaa\xbb" and r["lqi"] == b"\x77" and r["validcrc"] and r["rssi"] == 40
+    assert r[0] == b"\xaa\xbb" and r["lqi"] == 0x77 and r["validcrc"] and r["rssi"] == 40
     # stream now open; bad CRC
     dev.reads = [ac_pkt(b"\xaa\x01", crc=0)]
     assert d.pnext()["validcrc"] is False
@@ -207,7 +207,7 @@ def test_pnext_multi():
     dev.reads = [first, [0x01, 0x09]]
     r = d.pnext()
     assert r[0] == b"\x01\x02\x03\x01"
-    assert r["lqi"] == b"\x09"
+    assert r["lqi"] == 9
 
 
 def test_pnext_none_cases():

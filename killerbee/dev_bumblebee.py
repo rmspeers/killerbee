@@ -9,8 +9,6 @@ Bumblebee firmware provides 2.4GHz sniffing and injection capabilities,
 with RSSI/LQI. Bad FCS sniffing and jamming are not currently supported.
 """
 
-from __future__ import print_function # type: ignore
-import sys # type: ignore
 import struct # type: ignore
 import time # type: ignore
 from array import array # type: ignore
@@ -136,7 +134,7 @@ class Bumblebee(object):
           if nbytes > 0:
             self.rx_buffer += self.usb_rx_buffer.tobytes()[:nbytes]
         except usb.core.USBError as e:
-            if e.errno is not 110 and e.errno is not 60: #Operation timed out
+            if e.errno not in (110, 60): #Operation timed out
                 print("Error args: {}".format(e.args))
                 raise e
                 #TODO error handling enhancements for USB 1.0
@@ -316,7 +314,7 @@ class Bumblebee(object):
         """
         self.capabilities.require(KBCapabilities.SETCHAN)
 
-        if channel >= 11 or channel <= 26:
+        if 11 <= channel <= 26:
             self._channel = channel
             if self.dev is not None:
                 self._do_set_channel()
@@ -371,10 +369,9 @@ class Bumblebee(object):
 
         # Loop on all received packets
         for packet in self.process_packet():
-            if packet is not None:
-                payload = packet.get_data()
-            else:
-                return None
+            if packet.get_command() != Bumblebee.CMD_GOT_PKT:
+                continue
+            payload = packet.get_data()
 
             # CC2531 only allow (for the moment) to capture packets with valid CRC
             validcrc = True

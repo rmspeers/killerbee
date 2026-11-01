@@ -1,4 +1,3 @@
-from __future__ import print_function # type: ignore
 """
 CC253x support is contributed by Scytmo.
 """
@@ -10,10 +9,8 @@ import time # type: ignore
 from datetime import datetime # type: ignore
 from .kbutils import KBCapabilities, makeFCS, bytearray_to_bytes # type: ignore
 
-# Import USB support depending on version of pyUSB
 import usb.core # type: ignore
 import usb.util # type: ignore
-import sys # type: ignore
 
 class CC253x:
     USB_DIR_OUT        = 0x40
@@ -32,7 +29,7 @@ class CC253x:
     def __init__(self, dev, bus, variant):
         #TODO deprecate bus param, and dev becomes a usb.core.Device object, not a string in pyUSB 1.x use
         """
-        Instantiates the KillerBee class for Zigduino running GoodFET firmware.
+        Instantiates the KillerBee class for CC253x USB dongles.
         @type dev:   String
         @param dev:  PyUSB device
         @return: None
@@ -159,7 +156,7 @@ class CC253x:
         """
         self.capabilities.require(KBCapabilities.SETCHAN)
 
-        if channel >= 11 or channel <= 26:
+        if 11 <= channel <= 26:
             self._channel = channel
             if self.__stream_open == True:
                 self.dev.ctrl_transfer(CC253x.USB_DIR_OUT, CC253x.USB_XFER_STOP)
@@ -208,7 +205,7 @@ class CC253x:
             try:
                 pdata = self.dev.read(self._data_ep, self._maxPacketSize, timeout=timeout)
             except usb.core.USBError as e:
-                if e.errno is not 110 and e.errno is not 60: #Operation timed out
+                if e.errno not in (110, 60): #Operation timed out
                     print("Error args: {}".format(e.args))
                     raise e
                     #TODO error handling enhancements for USB 1.0

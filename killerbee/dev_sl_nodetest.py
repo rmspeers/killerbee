@@ -4,12 +4,9 @@ Author: Adam Laurie <adam@algroup.co.uk> aka RFIDiot
 
 '''
 
-import usb # type: ignore
 import serial # type: ignore
 import time # type: ignore
-import struct # type: ignore
-from datetime import datetime, date # type: ignore
-from datetime import time as dttime # type: ignore
+from datetime import datetime # type: ignore
 from .kbutils import KBCapabilities, makeFCS # type: ignore
 
 MODE_NONE    = 0x01
@@ -109,17 +106,19 @@ class SL_NODETEST:
         '''
         data = packet[1:].decode().replace('{',' ').replace('}',' ').split()
         # should be 12 fields + payload length + payload
-        if not data or not len(data[13:]) == int(data[12], 16):
-            print("Error parsing stream received from device (payload size error):", packet)
-            return None
-        # payload is in the form e.g. "0x03 0x08 0xA3 0xFF 0xFF 0xFF 0xFF 0x07" so we need to convert to a string
-        frame = b''
-        for x in data[13:]:
-            try:
-                frame += chr(int(x, 16)).encode('latin-1')
-            except:
-                print("Error parsing stream received from device (invalid payload):", packet)
+        try:
+            if len(data) < 13 or len(data[13:]) != int(data[12], 16):
+                print("Error parsing stream received from device (payload size error):", packet)
                 return None
+        except ValueError:
+            print("Error parsing stream received from device (invalid payload length):", packet)
+            return None
+        # payload is in the form e.g. "0x03 0x08 0xA3 0xFF 0xFF 0xFF 0xFF 0x07" so we need to convert to bytes
+        try:
+            frame = bytes(int(x, 16) for x in data[13:])
+        except ValueError:  # not hex, or not a byte value
+            print("Error parsing stream received from device (invalid payload):", packet)
+            return None
 
         # Parse other useful fields
         try:
@@ -144,7 +143,7 @@ class SL_NODETEST:
         '''
         self.capabilities.require(KBCapabilities.SNIFF)
 
-        if channel != None or page:
+        if channel is not None:
             self.set_channel(channel, page)
 
         if not self.__stream_open:
@@ -207,6 +206,7 @@ class SL_NODETEST:
         Injects the specified packet contents.
         @type packet: String
         @param packet: Packet contents to transmit, without FCS.
+        (Not yet implemented by this driver.)
         @type channel: Integer
         @param channel: Sets the channel, optional
         @type count: Integer
@@ -222,11 +222,8 @@ class SL_NODETEST:
         if len(packet) > 125:                   # 127 - 2 to accommodate FCS
             raise Exception('Packet too long')
 
-        if channel != None or page:
+        if channel is not None:
             self.set_channel(channel, page)
-
-        # Append two bytes to be replaced with FCS by firmware.
-        packet = ''.join([packet, "\x00\x00"])
 
         raise Exception('Not yet implemented')
 
@@ -234,19 +231,19 @@ class SL_NODETEST:
     #TODO I suspect that if you don't call this often enough while getting frames, the serial buffer may overflow.
     def pnext(self, timeout=100):
         '''
-        Returns packet data as a string, else None.
+        Returns a dictionary of packet data, else None.
         @type timeout: Integer
         @param timeout: Timeout to wait for packet reception in usec
         @rtype: List
         @return: Returns None if timeout expires and no packet received or packet is corrupt.  When a packet is received,
-                 a list is returned, in the form [ String: packet contents | Bool: Valid CRC | Int: Unscaled RSSI ]
+                 a dictionary is returned (keys 0/'bytes': packet contents, 1/'validcrc': Valid CRC, 2/'rssi': Int Unscaled RSSI, 'dbm', 'datetime', 'location')
         '''
         if not self.__stream_open:
             self.sniffer_on() #start sniffing
 
         self.handle.timeout=timeout         # Allow pySerial to handle timeout
         packet = self.handle.readline().strip()
-        if packet == '':
+        if packet == b'':
             return None   # Sense timeout case and return
 
         data = self.__dissect_pkt(packet)
@@ -280,7 +277,7 @@ class SL_NODETEST:
         '''
         self.capabilities.require(KBCapabilities.PHYJAM)
 
-        if channel != None or page:
+        if channel is not None:
             self.set_channel(channel, page)
 
         #TODO implement
