@@ -7,3 +7,6 @@ pdf/
 *.egg-info/
 .idea/
 .python-version
+*.so
+.coverage
+.coverage.*

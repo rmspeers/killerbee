@@ -5,6 +5,9 @@ import os
 
 from killerbee.kbutils import * 
 
+import pytest
+
+@pytest.mark.usefixtures("apimote_env")
 class TestKbutils(unittest.TestCase):
     def test_kbcapabilities_init(self):
         kbc=KBCapabilities()
@@ -349,6 +352,247 @@ class TestKbutils(unittest.TestCase):
         b = bytes([0x01, 0x02, 0x03, 0x04])
         self.assertEqual(b, bytearray_to_bytes(b))
         
-if __name__ == "__main__":
-    unittest.main()
 
+
+
+# ---------------------------------------------------------------------------
+# Additional mock-driven tests (no hardware)
+# ---------------------------------------------------------------------------
+import killerbee.kbutils as kbu
+import serial as _serial
+import usb.core
+
+
+class ScriptSerial:
+    """Scripted serial port for the text-based device probes."""
+    def __init__(self, lines=(), reads=b"", **kw):
+        self.lines = list(lines)
+        self.reads = bytearray(reads)
+        self.written = []
+        self.in_waiting = 0
+        self.closed = False
+
+    def write(self, d):
+        self.written.append(d)
+
+    def readline(self):
+        return self.lines.pop(0) if self.lines else b""
+
+    def read(self, n=1):
+        out = bytes(self.reads[:n])
+        del self.reads[:n]
+        return out
+
+    def close(self):
+        self.closed = True
+
+
+class FakeUsbDev:
+    def __init__(self, vid, pid, bus=1, address=2):
+        self.idVendor, self.idProduct, self.bus, self.address = vid, pid, bus, address
+        self.iProduct, self.iSerialNumber = 1, 2
+
+
+@pytest.fixture
+def clean_board(monkeypatch):
+    monkeypatch.delenv("board", raising=False)
+    monkeypatch.delenv("platform", raising=False)
+
+
+def test_find_from_list_call():
+    ffl = findFromList([1, 2], [10, 20])
+    assert ffl(FakeUsbDev(1, 10))
+    assert not ffl(FakeUsbDev(3, 10))
+    assert not ffl(FakeUsbDev(1, 30))
+
+
+def test_find_from_list_and_bus_dev_id_call():
+    f = findFromListAndBusDevId(1, 2, [1], [10])
+    assert f(FakeUsbDev(1, 10, bus=1, address=2))
+    assert not f(FakeUsbDev(1, 10, bus=2, address=2))
+    assert not f(FakeUsbDev(1, 10, bus=1, address=3))
+    assert not f(FakeUsbDev(9, 10, bus=1, address=2))
+    assert findFromListAndBusDevId(None, None, [1], [10])(FakeUsbDev(1, 10, 5, 6))
+
+
+def test_devlist_usb_v1x(monkeypatch):
+    devs = [FakeUsbDev(kbu.RZ_USB_VEND_ID, kbu.RZ_USB_PROD_ID, 3, 4)]
+    seen = {}
+
+    def find(find_all=False, custom_match=None, **kw):
+        seen["match"] = custom_match
+        return devs
+    monkeypatch.setattr(usb.core, "find", find)
+    monkeypatch.setattr(usb.util, "get_string", lambda d, i: "str%d" % i)
+    out = kbu.devlist_usb_v1x()
+    assert out == [["3:4", "str1", "str2"]]
+    assert seen["match"](devs[0])
+    kbu.devlist_usb_v1x(vendor=1, product=2)
+
+
+@pytest.mark.parametrize("errno,expect", [(13, "Unable to open device"), (5, None)])
+def test_devlist_usb_v1x_errors(monkeypatch, errno, expect):
+    class Boom:
+        def __iter__(self):
+            raise usb.core.USBError("x", errno=errno)
+    monkeypatch.setattr(usb.core, "find", lambda **kw: Boom())
+    with pytest.raises(Exception) as e:
+        kbu.devlist_usb_v1x()
+    if expect:
+        assert expect in str(e.value)
+    else:
+        assert isinstance(e.value, usb.core.USBError)
+
+
+def test_search_usb_none_and_bus(monkeypatch):
+    calls = []
+    monkeypatch.setattr(usb.core, "find", lambda custom_match=None, **k: calls.append(custom_match) or "dev")
+    assert kbu.search_usb(None) == "dev"
+    assert kbu.search_usb("1:2") == "dev"
+    assert calls[1]._busNum == 1 and calls[1]._devNum == 2
+
+
+def test_get_serial_ports_include(monkeypatch):
+    monkeypatch.setattr(kbu.glob, "glob", lambda p: ["/dev/ttyUSB9"] if "ttyUSB" in p else [])
+    assert kbu.get_serial_ports() == ["/dev/ttyUSB9"]
+    out = kbu.get_serial_ports(include=["/dev/ttyS5", "192.168.0.1", "/dev/ttyUSB9"])
+    assert set(out) == {"/dev/ttyUSB9", "/dev/ttyS5"}
+
+
+def test_get_serial_devs_stub():
+    assert kbu.get_serial_devs([]) is None
+
+
+def test_issl_nodetest(monkeypatch):
+    monkeypatch.setattr(kbu.serial, "Serial",
+                        lambda **kw: ScriptSerial([b"x"] * 5 + [b"junk", b"Node Test Application v1"]))
+    assert kbu.issl_nodetest("/dev/x") is True
+    monkeypatch.setattr(kbu.serial, "Serial", lambda **kw: ScriptSerial([]))
+    assert kbu.issl_nodetest("/dev/x") is False
+
+
+def test_issl_beehive(monkeypatch):
+    class BH(ScriptSerial):
+        def __init__(self, **kw):
+            super().__init__([b"a", b"BeeHive SG 1.0"], **kw)
+            self.in_waiting = 1
+
+        def readline(self):
+            self.in_waiting = 0
+            return super().readline()
+    monkeypatch.setattr(kbu.serial, "Serial", lambda **kw: BH())
+    assert kbu.issl_beehive("/dev/x") is True
+    monkeypatch.setattr(kbu.serial, "Serial", lambda **kw: ScriptSerial([]))
+    assert kbu.issl_beehive("/dev/x") is False
+
+
+def test_isfreakduino(monkeypatch):
+    monkeypatch.setattr(kbu.time, "sleep", lambda s: None)
+    monkeypatch.setattr(kbu.serial, "Serial", lambda **kw: ScriptSerial(reads=b"abc&C!V7"))
+    assert kbu.isfreakduino("/dev/x") is True
+    monkeypatch.setattr(kbu.serial, "Serial", lambda **kw: ScriptSerial(reads=b"abc&XXX"))
+    assert kbu.isfreakduino("/dev/x") is False
+
+
+@pytest.mark.xfail(strict=False, reason="GoodFETatmel128.writecmd writes str via serial.write(chr(app)) -> TypeError on py3")
+def test_iszigduino_with_fake_goodfet(apimote_env, clean_board):
+    assert kbu.iszigduino(apimote_env) is True
+
+
+def test_iszigduino_serial_error(apimote_env, clean_board):
+    with pytest.raises(KBInterfaceError):
+        kbu.iszigduino("/dev/does-not-exist")
+
+
+def test_iszigduino_not_connected(apimote_env, clean_board, monkeypatch):
+    from conftest import FakeGoodFETSerial
+    monkeypatch.setattr(FakeGoodFETSerial, "accepted_boards", set())
+    assert kbu.iszigduino(apimote_env) is False
+
+
+def test_isgoodfetccspi_apimote2(apimote_env, clean_board):
+    assert kbu.isgoodfetccspi(apimote_env) == (True, 2)
+
+
+def test_isgoodfetccspi_telosb_and_apimote1(apimote_env, clean_board, monkeypatch):
+    from conftest import FakeGoodFETSerial
+    monkeypatch.setattr(kbu, "DEV_ENABLE_TELOSB", True)
+    monkeypatch.setattr(FakeGoodFETSerial, "accepted_boards", {"telosb"})
+    monkeypatch.setattr(FakeGoodFETSerial, "telosb_ok", True, raising=False)
+    assert kbu.isgoodfetccspi(apimote_env) == (True, 0)
+    monkeypatch.setattr(kbu, "DEV_ENABLE_TELOSB", False)
+    monkeypatch.setattr(kbu, "DEV_ENABLE_APIMOTE2", False)
+    monkeypatch.setattr(kbu, "DEV_ENABLE_APIMOTE1", True)
+    monkeypatch.setattr(FakeGoodFETSerial, "accepted_boards", {"apimote1"})
+    assert kbu.isgoodfetccspi(apimote_env) == (True, 1)
+
+
+def test_isgoodfetccspi_nothing_found(apimote_env, clean_board, monkeypatch):
+    from conftest import FakeGoodFETSerial
+    monkeypatch.setattr(kbu, "DEV_ENABLE_TELOSB", True)
+    monkeypatch.setattr(kbu, "DEV_ENABLE_APIMOTE1", True)
+    monkeypatch.setattr(FakeGoodFETSerial, "accepted_boards", set())
+    assert kbu.isgoodfetccspi(apimote_env) == (False, None)
+
+
+@pytest.mark.parametrize("flag", ["TELOSB", "APIMOTE2", "APIMOTE1"])
+def test_isgoodfetccspi_serial_error(apimote_env, clean_board, monkeypatch, flag):
+    for f in ("TELOSB", "APIMOTE2", "APIMOTE1"):
+        monkeypatch.setattr(kbu, "DEV_ENABLE_" + f, f == flag)
+    with pytest.raises(KBInterfaceError):
+        kbu.isgoodfetccspi("/dev/does-not-exist")
+
+
+def test_devlist_all_types(monkeypatch, capsys):
+    monkeypatch.setattr(kbu, "devlist_usb_v1x", lambda v, p: [["1:2", "usbdev", "S"]])
+    ports = ["/dev/a", "/dev/b", "/dev/c", "/dev/d", "/dev/gps", "/dev/e", "/dev/f", "/dev/g", "/dev/h"]
+    monkeypatch.setattr(kbu, "get_serial_ports", lambda include=None: ports)
+    for f in ("SL_NODETEST", "SL_BEEHIVE", "ZIGDUINO", "FREAKDUINO"):
+        monkeypatch.setattr(kbu, "DEV_ENABLE_" + f, True)
+    monkeypatch.setattr(kbu, "gps_devstring", "/dev/gps")
+    monkeypatch.setattr(kbu, "issl_nodetest", lambda d: d == "/dev/a")
+    monkeypatch.setattr(kbu, "issl_beehive", lambda d: d == "/dev/b")
+    monkeypatch.setattr(kbu, "iszigduino", lambda d: d == "/dev/c")
+    monkeypatch.setattr(kbu, "isfreakduino", lambda d: d == "/dev/d")
+    subtypes = {"/dev/e": (True, 0), "/dev/f": (True, 1), "/dev/g": (True, 2), "/dev/h": (True, 7)}
+    monkeypatch.setattr(kbu, "isgoodfetccspi", lambda d: subtypes[d])
+    out = kbu.devlist()
+    names = [d[1] for d in out]
+    assert names == ["usbdev", "Silabs NodeTest", "BeeHive SG", "Zigduino", "Dartmouth Freakduino",
+                     "GoodFET TelosB/Tmote", "GoodFET Api-Mote v1", "GoodFET Api-Mote v2"]
+    assert "unknown type of GoodFET CCSPI" in capsys.readouterr().out
+
+
+def test_devlist_include_ip_and_gps(monkeypatch, capsys):
+    import killerbee.dev_sewio as ds
+    monkeypatch.setattr(kbu, "devlist_usb_v1x", lambda v, p: [])
+    monkeypatch.setattr(kbu, "get_serial_ports", lambda include=None: [])
+    monkeypatch.setattr(kbu, "gps_devstring", None)
+    monkeypatch.setattr(ds, "isSewio", lambda ip: ip == "10.0.0.1")
+    monkeypatch.setattr(ds, "getFirmwareVersion", lambda ip: "1.2")
+    monkeypatch.setattr(ds, "getMacAddr", lambda ip: "aa:bb")
+    out = kbu.devlist(gps="/dev/gpsdev", include=["10.0.0.1", "10.0.0.2", "/dev/tty0"])
+    assert out == [["10.0.0.1", "Sewio Open-Sniffer v1.2", "aa:bb"]]
+    assert "unknown type of IP sniffer" in capsys.readouterr().out
+    assert kbu.gps_devstring == "/dev/gpsdev"
+    kbu.gps_devstring = None
+
+
+def test_capabilities_frequency_pages():
+    c = KBCapabilities()
+    for cap in (KBCapabilities.FREQ_863, KBCapabilities.FREQ_868, KBCapabilities.FREQ_870,
+                KBCapabilities.FREQ_915, KBCapabilities.FREQ_900, KBCapabilities.FREQ_2400):
+        c.setcapab(cap, True)
+    assert c.frequency(0, 28) == 863250
+    assert c.frequency(1, 29) == 868850
+    assert c.frequency(2, 30) == 870650
+    assert c.frequency(0, 31) == 915350
+    assert c.is_valid_channel(5)            # 900 MHz
+    assert not c.is_valid_channel(None)
+    assert not c.is_valid_channel(9, 29)
+    assert not c.is_valid_channel(5, 40)
+    assert c.check(0x99) is False
+
+
+def test_exceptions():
+    assert issubclass(KBInterfaceError, KBException)

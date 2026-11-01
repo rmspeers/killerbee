@@ -1,0 +1,6 @@
+[run]
+source = killerbee
+branch = False
+
+[report]
+show_missing = True

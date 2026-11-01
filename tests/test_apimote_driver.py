@@ -4,8 +4,11 @@ import argparse
 import os
 
 from killerbee.dev_apimote import APIMOTE
-from killerbee.kbutils import KBCapabilities
+from killerbee.kbutils import KBCapabilities, makeFCS
 
+import pytest
+
+@pytest.mark.usefixtures("apimote_env")
 class TestApimoteDriver(unittest.TestCase):
     def test_init(self):
         driver=APIMOTE(os.environ['APIMOTE_DEVSTRING'])
@@ -116,11 +119,114 @@ class TestApimoteDriver(unittest.TestCase):
 
     def test_pnext(self):
         driver=APIMOTE(os.environ['APIMOTE_DEVSTRING'])
-     
-        driver.set_channel(25) 
-        driver.pnext()
+        fake = self._fake()
+        if fake is not None:
+            fake.queue_packet(bytes([5]) + b'\x01\x02\x03\x04\x05')
+            fake.regs[0x13] = 0x10
 
-        self.assertTrue(True) 
+        driver.set_channel(25)
+        result = driver.pnext(timeout=1)
+        if fake is not None:
+            self.assertEqual(result['bytes'], b'\x01\x02\x03\x04\x05')
+            self.assertFalse(result['validcrc'])
+            self.assertEqual(result[2], 0x10 ^ 0x80)
+            self.assertEqual(result['dbm'], result['rssi'] - 45)
+            self.assertIsNone(result['location'])
+            # nothing else queued: timeout -> None
+            self.assertIsNone(driver.pnext(timeout=0))
+
+        driver.close()
+
+    def test_pnext_valid_crc_and_queued_packet(self):
+        if self._fake_env() is None:
+            self.skipTest("needs fake device")
+        driver=APIMOTE(os.environ['APIMOTE_DEVSTRING'])
+        fake = self._fake()
+        body = b'\x01\x02\x03'
+        frame = body + makeFCS(body)
+        second = b'\xaa\xbb\xcc'
+        # one read returns two frames back to back
+        fake.queue_packet(bytes([len(frame)]) + frame + bytes([len(second)]) + second)
+        first = driver.pnext(timeout=1)
+        self.assertTrue(first['validcrc'])
+        self.assertEqual(first['bytes'], frame)
+        queued = driver.pnext(timeout=1)
+        self.assertEqual(queued['bytes'], second)  # queue slice drops 2nd length byte
+        driver.close()
+
+    def test_pnext_queued_without_rssi(self):
+        if self._fake_env() is None:
+            self.skipTest("needs fake device")
+        driver=APIMOTE(os.environ['APIMOTE_DEVSTRING'])
+        fake = self._fake()
+        driver.packet_queue = b'\x01\x02'
+        driver.packet_queue_rssi = None
+        result = driver.pnext()
+        self.assertIsNone(result['rssi'])
+        self.assertIsNone(result['dbm'])
+        driver.close()
+
+    def test_handle_none_errors(self):
+        driver=APIMOTE(os.environ['APIMOTE_DEVSTRING'])
+        driver.close()
+        self.assertRaises(Exception, driver.close)
+        self.assertRaises(Exception, driver.sniffer_on)
+        self.assertRaises(Exception, driver.set_channel, 11)
+        self.assertRaises(Exception, driver.inject, b'\x01')
+        self.assertRaises(Exception, driver.pnext)
+        self.assertRaises(Exception, driver.jammer_on)
+        self.assertRaises(Exception, driver.set_sync)
+
+    def test_sniffer_on_with_channel_and_page(self):
+        driver=APIMOTE(os.environ['APIMOTE_DEVSTRING'])
+        driver.sniffer_on(channel=12)
+        self.assertEqual(driver._channel, 12)
+        self.assertRaises(Exception, driver.sniffer_on, 12, 1)
+        driver.close()
+
+    def test_inject_channel_count(self):
+        driver=APIMOTE(os.environ['APIMOTE_DEVSTRING'])
+        driver.inject(b'\x01\x02', channel=13, count=2)
+        self.assertEqual(driver._channel, 13)
+        fake = self._fake()
+        if fake is not None:
+            self.assertEqual(len(fake.tx_packets), 2)
+            self.assertEqual(fake.tx_packets[0], bytes([4, 1, 2]))
+        driver.close()
+
+    def test_jammer_methods(self):
+        driver=APIMOTE(os.environ['APIMOTE_DEVSTRING'])
+        fake = self._fake()
+        if fake is None:
+            self.skipTest("jamming would transmit on real hardware")
+        driver.jammer_on()                       # default: constant carrier
+        driver.jammer_on(11, 0, 'constant')
+        self.assertEqual(driver._channel, 11)
+        driver.jammer_on(None, 0, 'reflexive')
+        self.assertIn(0xA0, [v for (_a, v, _d) in fake.sent])
+        self.assertIn(0x2E, fake.regs)           # DACTST set by carrier
+        driver.close()
+
+    def test_set_sync_value(self):
+        driver=APIMOTE(os.environ['APIMOTE_DEVSTRING'])
+        fake = self._fake()
+        driver.set_sync(0x1234)
+        if fake is not None:
+            self.assertEqual(fake.regs[0x14], 0x1234)
+        driver.set_sync()
+        driver.close()
+
+    @staticmethod
+    def _fake_env():
+        return True if os.environ.get('APIMOTE_DEVSTRING') == '/dev/ttyFAKE0' else None
+
+    @staticmethod
+    def _fake():
+        """Return the live FakeGoodFETSerial, or None on real hardware."""
+        from conftest import FakeGoodFETSerial
+        if os.environ.get('APIMOTE_DEVSTRING') != '/dev/ttyFAKE0':
+            return None
+        return FakeGoodFETSerial.last
 
     def test_ping(self):
         driver=APIMOTE(os.environ['APIMOTE_DEVSTRING'])
@@ -148,6 +254,16 @@ class TestApimoteDriver(unittest.TestCase):
         driver.close()
         
 
+
+
+@pytest.mark.hardware
+def test_real_apimote_smoke():
+    """Runs only when APIMOTE_DEVSTRING points at a real Apimote."""
+    driver = APIMOTE(os.environ['APIMOTE_DEVSTRING'])
+    assert driver.get_dev_info()[1] == "GoodFET Apimote v2"
+    driver.set_channel(15)
+    driver.close()
+
+
 if __name__ == "__main__":
     unittest.main()
-
