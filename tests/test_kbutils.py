@@ -144,6 +144,9 @@ class TestKbutils(unittest.TestCase):
         kbc.setcapab(KBCapabilities.FREQ_2400, True)
         self.assertEqual(0, kbc.frequency(11, 1))
         self.assertEqual(0, kbc.frequency(10))
+        kbc.setcapab(KBCapabilities.FREQ_900, True)
+        self.assertEqual(0, kbc.frequency(1))   # FREQ_900 frequencies not yet implemented
+        kbc.setcapab(KBCapabilities.FREQ_900, False)
         self.assertEqual(0, kbc.frequency(27))
         self.assertEqual(2405000, kbc.frequency(11))
         self.assertEqual(2480000, kbc.frequency(26))
@@ -329,9 +332,17 @@ class TestKbutils(unittest.TestCase):
     def _test_search_usb_bus_v0x(self):
         self.assertTrue(True)
     
-    #TODO migrate this function to scapy hexdump? This doesn't work in Python3
     def test_hexdump(self):
-        self.assertRaises(TypeError, hexdump, "test") #SHOULD NOT RAISE ERROR
+        expected = "0000:  74 65 73 74" + " " * 39 + "test\n"
+        self.assertEqual(expected, hexdump(b"test"))
+        self.assertEqual(expected, hexdump("test"))
+        self.assertEqual(expected, hexdump(bytearray(b"test")))
+        self.assertEqual("", hexdump(b""))
+        dump = hexdump(bytes(range(0x7e, 0x7e + 20)), length=8)
+        lines = dump.splitlines()
+        self.assertEqual(3, len(lines))
+        self.assertEqual("0000:  7e 7f 80 81 82 83 84 85   ~.......", lines[0])
+        self.assertTrue(lines[2].startswith("0010:  8e 8f 90 91"))
 
     def test_randbytes(self):
         self.assertEqual(1, len(randbytes(1)))
@@ -339,8 +350,18 @@ class TestKbutils(unittest.TestCase):
         self.assertEqual(100, len(randbytes(100)))
         self.assertEqual(1000, len(randbytes(1000)))
 
+    def test_randbytes_type(self):
+        self.assertIsInstance(randbytes(4), bytes)
+
     def test_randmac(self):
         self.assertEqual(8, len(randmac()))
+        self.assertEqual(3, len(randmac(3)))
+        mac = randmac()
+        self.assertIsInstance(mac, bytes)
+        # air-format (LSB first): OUI ends up at the end of the byte string, reversed
+        self.assertIn(mac[-3:][::-1], (b"\x00\x0d\x6f", b"\x00\x12\x4b", b"\x00\x04\xa3", b"\x00\x04\x25",
+            b"\x00\x11\x7d", b"\x00\x13\xa2", b"\x00\x30\x66", b"\x00\x0b\x57", b"\x00\x04\x9f",
+            b"\x00\x21\xed", b"\x00\xa0\x50"))
 
     def test_makeFCS(self):
         data = b'\x01' * 20

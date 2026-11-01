@@ -16,10 +16,8 @@ from typing import Optional, Dict, Union, Any, List
 
 import os
 import time
-import struct
-import time 
-from datetime import datetime, timedelta 
-from .kbutils import KBCapabilities, makeFCS 
+from datetime import datetime, timedelta, timezone
+from .kbutils import KBCapabilities, makeFCS
 from .GoodFETCCSPI import GoodFETCCSPI
 
 CC2420_REG_SYNC: int = 0x14
@@ -56,7 +54,7 @@ class APIMOTE:
     def close(self) -> None:
         
         if self.handle is None:
-            raise Exception("Handle does not exist");
+            raise Exception("Handle does not exist")
 
         self.handle.serClose()
         self.handle = None
@@ -199,36 +197,34 @@ class APIMOTE:
         if self.handle is None:
             raise Exception("Handle does not exist")
 
-        if self.__stream_open == False:
+        if not self.__stream_open:
             self.sniffer_on()
-        
+
+        # packet_queue holds the unparsed remainder of a previous read, i.e. any further
+        # frames still in their <length byte><frame> wire format.
         if self.packet_queue is None:
             packet: Optional[bytes] = None
-            start = datetime.now()
+            start = datetime.now(timezone.utc)
 
-            while (packet is None) and ((start + timedelta(seconds=timeout)) > datetime.now()):
+            while (packet is None) and ((start + timedelta(seconds=timeout)) > datetime.now(timezone.utc)):
                 packet = self.handle.RF_rxpacket()
                 rssi = self.handle.RF_getrssi() #TODO calibrate
 
             if packet is None:
                 return None
-
-            if packet[0]+1 < len(packet):
-                self.packet_queue = packet[packet[0]+1+1:]
-                self.packet_queue_rssi = rssi
-             
-            frame = packet[1:packet[0]+1]
-
-        else: 
+        else:
             packet = self.packet_queue
+            rssi = self.packet_queue_rssi
+
+        # Split off the first frame (length byte excluded); keep any trailing frames queued.
+        flen = packet[0]
+        frame = bytes(packet[1:flen+1])
+        if flen+1 < len(packet):
+            self.packet_queue = bytes(packet[flen+1:])
+            self.packet_queue_rssi = rssi
+        else:
             self.packet_queue = None
-            frame = packet
-
-            if self.packet_queue_rssi is None:
-                rssi = None
-            else:
-                rssi = self.packet_queue_rssi
-
+            self.packet_queue_rssi = None
 
         validcrc: bool = False
         if frame[-2:] == makeFCS(frame[:-2]):
@@ -245,7 +241,7 @@ class APIMOTE:
             'location': None
         }
 
-        result['datetime'] = datetime.utcnow()
+        result['datetime'] = datetime.now(timezone.utc)
         if rssi is None:
             result['dbm'] = None
         else:          

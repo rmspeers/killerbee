@@ -1,6 +1,6 @@
 """Tests for dev_freakduino and dev_zigduino with scripted fake serial / GoodFET handles."""
 import struct
-from datetime import datetime, time as dttime
+from datetime import datetime, timezone, time as dttime
 
 import pytest
 
@@ -9,45 +9,55 @@ from killerbee import dev_zigduino as zd
 from killerbee.kbutils import KBCapabilities
 
 
-class Py2Serial:
-    """Fake pyserial object that speaks str (as the Freakduino driver expects)."""
+class BytesSerial:
+    """Fake pyserial object speaking bytes, like real pyserial 3.x. Tests may assign str to .rx."""
 
     def __init__(self, *args, **kwargs):
         self.kwargs = kwargs
         self.timeout = kwargs.get("timeout")
-        self.rx = ""
+        self._rx = b""
         self.tx = []
         self.closed = False
         self.empty_reads = 0
 
+    @property
+    def rx(self):
+        return self._rx
+
+    @rx.setter
+    def rx(self, value):
+        self._rx = value.encode("latin-1") if isinstance(value, str) else value
+
     def read(self, n=1):
-        if not self.rx:
+        if not self._rx:
             self.empty_reads += 1
             if self.empty_reads > 2000:
                 raise RuntimeError("fake serial exhausted")
-            return ""
-        out, self.rx = self.rx[:n], self.rx[n:]
+            return b""   # pyserial returns b"" on timeout
+        out, self._rx = self._rx[:n], self._rx[n:]
         return out
 
-    def readline(self, eol="\n"):
-        i = self.rx.find(eol)
+    def read_until(self, expected=b"\n"):
+        i = self._rx.find(expected)
         if i < 0:
-            out, self.rx = self.rx, ""
+            out, self._rx = self._rx, b""
         else:
-            out, self.rx = self.rx[:i + 1], self.rx[i + 1:]
+            out, self._rx = self._rx[:i + 1], self._rx[i + 1:]
         return out
 
     def write(self, data):
+        assert isinstance(data, bytes), "pyserial 3 only accepts bytes"
         self.tx.append(data)
 
     def flush(self):
         pass
 
-    def flushInput(self):
+    def reset_input_buffer(self):
         pass
 
-    def inWaiting(self):
-        return len(self.rx)
+    @property
+    def in_waiting(self):
+        return len(self._rx)
 
     def close(self):
         self.closed = True
@@ -56,7 +66,7 @@ class Py2Serial:
 @pytest.fixture
 def freak(monkeypatch):
     monkeypatch.setattr(fd.time, "sleep", lambda s: None)
-    monkeypatch.setattr(fd.serial, "Serial", Py2Serial)
+    monkeypatch.setattr(fd.serial, "Serial", BytesSerial)
     return fd.FREAKDUINO("/dev/ttyUSB5")
 
 
@@ -78,12 +88,12 @@ class TestFreakduino:
         h = freak.handle
         freak.sniffer_on(channel=14)
         assert freak.mode == fd.MODE_SNIFF
-        assert "".join(h.tx).count("S") == 2
-        assert "C!C 14" in "".join(h.tx) or ("C!C %d" % 14) in h.tx
+        assert b"".join(h.tx).count(b"S") == 2
+        assert b"C!C 14" in b"".join(h.tx)
         freak.sniffer_off()
         assert freak.mode == fd.MODE_NONE
         freak.eeprom_dump()
-        assert "C!D" in h.tx
+        assert b"C!D" in h.tx
         freak.sniffer_on()
 
     def test_set_channel_requires_cap(self, freak):
@@ -93,22 +103,23 @@ class TestFreakduino:
         with pytest.raises(Exception, match="does not support"):
             freak.set_channel(20)
 
-    @pytest.mark.xfail(strict=False, reason="channel check uses 'or' (>=10 or <=26): out-of-range never rejected; "
-                                            "also page argument is ignored")
     def test_set_channel_invalid(self, freak):
-        with pytest.raises(Exception, match="Invalid channel"):
-            freak.set_channel(40)
+        for bad in (-1, 10, 27, 40):
+            with pytest.raises(Exception, match="Invalid channel"):
+                freak.set_channel(bad)
+        assert freak._channel is None
+        assert freak.handle.tx == []
 
     def test_inject(self, freak):
         freak.capabilities.setcapab(KBCapabilities.INJECT, True)
         with pytest.raises(Exception, match="Empty"):
-            freak.inject("")
+            freak.inject(b"")
         with pytest.raises(Exception, match="too long"):
-            freak.inject("x" * 126)
-        freak.inject("abc", count=0)
+            freak.inject(b"x" * 126)
+        freak.inject(b"abc", count=0)
         with pytest.raises(Exception, match="Not yet implemented"):
-            freak.inject("abc", channel=12)
-        with pytest.raises(TypeError):   # py3: bytes + str join
+            freak.inject(b"abc", channel=12)
+        with pytest.raises(Exception, match="Not yet implemented"):
             freak.inject(b"abc")
 
     def test_inject_requires_cap(self, freak):
@@ -126,7 +137,7 @@ class TestFreakduino:
     def test_set_channel_page_and_pnext_autostart(self, freak, monkeypatch):
         with pytest.raises(Exception, match="SubGHz"):
             freak.set_channel(12, page=1)
-        monkeypatch.setattr(fd, "makeFCS", lambda d: "ok")
+        monkeypatch.setattr(fd, "makeFCS", lambda d: b"ok")
         freak._FREAKDUINO__stream_open = False
         assert freak.pnext() is None
         assert freak.mode == fd.MODE_SNIFF
@@ -139,8 +150,6 @@ class TestFreakduino:
         with pytest.raises(Exception, match="Not yet implemented"):
             freak.jammer_on(channel=12)
 
-    @pytest.mark.xfail(strict=False,
-                       reason="jammer_on references undefined self.__cmdmode / RZ_CMD_MODE_AC")
     def test_jammer_on_with_cap(self, freak):
         freak.capabilities.setcapab(KBCapabilities.PHYJAM, True)
         with pytest.raises(Exception, match="Not yet implemented"):
@@ -149,21 +158,22 @@ class TestFreakduino:
     # pnext_rec -----------------------------------------------------------
     @pytest.fixture
     def parse(self, freak, monkeypatch):
-        monkeypatch.setattr(fd, "makeFCS", lambda d: "ok")
+        monkeypatch.setattr(fd, "makeFCS", lambda d: b"ok")
         freak.getCaptureDateTime = lambda data: "dt"
         return freak
 
     def test_pnext_requires_sniffer_on_first(self, freak):
-        # __stream_open is only created in sniffer_on(); plain pnext() hits AttributeError
-        with pytest.raises(AttributeError):
-            freak.pnext()
+        # pnext() starts the sniffer on demand
+        assert freak.mode == fd.MODE_NONE
+        assert freak.pnext(timeout=1) is None
+        assert freak.mode == fd.MODE_SNIFF
 
     def test_pnext_after_sniffer_on_packet(self, parse):
         parse.sniffer_on()
-        parse.handle.rx = "R!" + "\x30" + "!tm!len!hello;ok"[:-3] + ";"
-        # frame is 'hello' -> crc compare uses patched makeFCS ("ok")
+        parse.handle.rx = "R!" + "\x30" + "!tm!len!hello;"
+        # frame is b'hello' -> crc compare uses patched makeFCS (b"ok")
         r = parse.pnext(timeout=5)
-        assert r["bytes"] == "hello" and r["validcrc"] is False
+        assert r["bytes"] == b"hello" and r["validcrc"] is False
         assert r["rssi"] == 0x30 and r["datetime"] == "dt" and r["dbm"] is None
         assert r["location"] == (None, None, None)
         assert parse.handle.timeout == 5
@@ -191,7 +201,7 @@ class TestFreakduino:
         parse.processLocationUpdate = lambda d: seen.append(d)
         parse.handle.rx = "L!abcd;"
         assert parse.pnext_rec() is None
-        assert seen == ["abcd"]
+        assert seen == [b"abcd"]
         parse.handle.rx = "L?"
         parse.pnext_rec()
 
@@ -204,79 +214,46 @@ class TestFreakduino:
         parse.handle.rx = "[" + "x" * 40
         assert parse.pnext_rec() is None
 
-    def test_pnext_rec_bytes_from_real_pyserial(self, parse):
-        # Real pyserial returns bytes, so "R" never matches: documented py3 limitation
-        class BytesSerial(Py2Serial):
-            def read(self, n=1):
-                s = super().read(n)
-                return s.encode("latin-1") if s else None
-        parse.handle = BytesSerial()
-        parse.handle.rx = "R!\x01!a!b!xxok;"
-        assert parse.pnext_rec() is None
-
-    @pytest.mark.xfail(strict=False, reason="py3: serial returns bytes, driver compares to str; no packet is ever parsed")
-    def test_pnext_rec_real_bytes_parsed(self, freak, monkeypatch):
-        class BytesSerial(Py2Serial):
-            def read(self, n=1):
-                s = super().read(n)
-                return s.encode("latin-1")
-        freak.handle = BytesSerial()
-        freak.handle.rx = "R!\x01!1!4!abcd;"
-        assert freak.pnext_rec() is not None
+    def test_pnext_rec_real_bytes_parsed(self, freak):
+        freak.handle.rx = b"R!\x01!1!4!abcd;"
+        r = freak.pnext_rec()
+        assert r["bytes"] == b"abcd" and r["rssi"] == 1 and isinstance(r["datetime"], datetime)
+        assert r["datetime"].tzinfo is timezone.utc
 
     # time / location --------------------------------------------------------
-    def test_capture_datetime_ok(self, freak, monkeypatch):
-        class S:
-            @staticmethod
-            def unpack(f, d):
-                return (12345678,)
-        monkeypatch.setattr(fd, "struct", S)
+    def test_capture_datetime_ok(self, freak):
         freak.date = datetime(2020, 1, 2).date()
-        dt = freak.getCaptureDateTime([0, "x"])
-        assert dt == datetime(2020, 1, 2, 12, 34, 56, 78)
+        # little-endian uint32 12345678 -> 12:34:56.78 (hhmmsscc)
+        dt = freak.getCaptureDateTime([b"", struct.pack("<L", 12345678)])
+        assert dt == datetime(2020, 1, 2, 12, 34, 56, 780000, tzinfo=timezone.utc)
 
-    def test_capture_datetime_zero_time_uses_now(self, freak, monkeypatch):
-        class S:
-            @staticmethod
-            def unpack(f, d):
-                return (0,)
-        monkeypatch.setattr(fd, "struct", S)
+    def test_capture_datetime_zero_time_uses_now(self, freak):
         freak.date = datetime(2020, 1, 2).date()
-        dt = freak.getCaptureDateTime([0, "x"])
+        dt = freak.getCaptureDateTime([b"", struct.pack("<L", 0)])
+        assert dt.date() == freak.date and dt.time() != dttime.min
+
+    def test_capture_datetime_failure_paths(self, freak, capsys):
+        freak.date = datetime(2020, 1, 2).date()
+        # bad time field: falls back to the current UTC time-of-day instead of crashing
+        dt = freak.getCaptureDateTime([0, b"x"])
         assert dt.date() == freak.date
+        assert "Issue with time format" in capsys.readouterr().out
+        # out-of-range hhmmsscc (hour 99)
+        freak.getCaptureDateTime([0, struct.pack("<L", 99999999)])
 
-    def test_capture_datetime_failure_paths(self, freak):
-        freak.date = datetime(2020, 1, 2).date()
-        # struct.unpack('L', str) raises; the except handler then references an unbound variable
-        with pytest.raises(UnboundLocalError):
-            freak.getCaptureDateTime([0, "x"])
-
-    @pytest.mark.xfail(strict=False, raises=AttributeError, reason="date.utcnow() does not exist (should be datetime)")
-    def test_capture_datetime_no_date(self, freak, monkeypatch):
-        class S:
-            @staticmethod
-            def unpack(f, d):
-                return (12345678,)
-        monkeypatch.setattr(fd, "struct", S)
+    def test_capture_datetime_no_date(self, freak):
         freak.date = None
-        assert freak.getCaptureDateTime([0, "x"]) is not None
+        dt = freak.getCaptureDateTime([0, struct.pack("<L", 12345678)])
+        assert dt.date() == datetime.now(timezone.utc).date() and dt.hour == 12
 
-    @pytest.mark.xfail(strict=False, raises=(TypeError, struct.error),
-                       reason="processLocationUpdate: native 'l' is 8 bytes, str input, datetime.date misuse")
-    def test_process_location_update(self, freak):
-        freak.processLocationUpdate(struct.pack("<llllL", 1, 2, 3, 4, 70111)[:16])
-
-    def test_process_location_update_stubbed(self, freak, monkeypatch):
-        vals = iter([-72, 43, 38, 70111])
-
-        class S:
-            @staticmethod
-            def unpack(f, d):
-                return (next(vals),)
-        monkeypatch.setattr(fd, "struct", S)
-        with pytest.raises(TypeError):     # datetime.date(...) called as a method with 3 args
-            freak.processLocationUpdate("0123456789abcdef")
-        assert (freak.lon, freak.lat, freak.alt) == (-72, 43, 38)
+    def test_process_location_update(self, freak, capsys):
+        freak.processLocationUpdate(struct.pack("<lllL", -7228745, 4370648, 3800, 70111))
+        assert (freak.lon, freak.lat, freak.alt) == (-7228745, 4370648, 3800)
+        assert freak.date == datetime(2011, 1, 7).date()
+        # device without a valid GPS date keeps the previous date
+        freak.processLocationUpdate(struct.pack("<lllL", 1, 2, 3, 0))
+        assert freak.date == datetime(2011, 1, 7).date()
+        assert (freak.lon, freak.lat, freak.alt) == (1, 2, 3)
 
     # __serial_cmd -------------------------------------------------------------
     def test_serial_cmd_success(self, freak, capsys):
@@ -358,6 +335,7 @@ class TestZigduino:
     def test_sniffer_on_off(self, zig):
         zig.sniffer_on()
         zig.sniffer_on(channel=15)
+        zig.sniffer_on(page=0)
         assert ("chan", 15) in zig.handle.calls
         assert zig._channel == 15
         zig.sniffer_off()
@@ -369,30 +347,31 @@ class TestZigduino:
         with pytest.raises(Exception, match="does not support"):
             zig.set_channel(12)
 
-    @pytest.mark.xfail(strict=False, reason="channel check uses 'or' (>=11 or <=26): invalid channel never rejected")
     def test_set_channel_invalid(self, zig):
-        with pytest.raises(Exception, match="Invalid channel"):
-            zig.set_channel(99)
+        for bad in (-1, 10, 27, 99):
+            with pytest.raises(Exception, match="Invalid channel"):
+                zig.set_channel(bad)
+        assert not any(c[0] == "chan" for c in zig.handle.calls)
 
-    def test_inject_str(self, zig):
-        zig.inject("ab", channel=12, count=2)
+    def test_inject_bytes(self, zig):
+        zig.inject(b"ab", channel=12, count=2)
         assert zig.handle.calls.count(("tx", [4, ord("a"), ord("b")])) == 2
         assert ("autocrc", 1) in zig.handle.calls
         with pytest.raises(Exception, match="Empty"):
-            zig.inject("")
+            zig.inject(b"")
         with pytest.raises(Exception, match="too long"):
-            zig.inject("x" * 126)
+            zig.inject(b"x" * 126)
         with pytest.raises(Exception, match="SubGHz"):
-            zig.inject("ab", page=1)
+            zig.inject(b"ab", page=1)
 
-    @pytest.mark.xfail(strict=False, raises=TypeError, reason="py3: inject() does ord(x) on ints from a bytes packet")
-    def test_inject_bytes(self, zig):
-        zig.inject(b"ab")
+    def test_inject_bytearray(self, zig):
+        zig.inject(bytearray(b"ab"))
+        assert ("tx", [4, 97, 98]) in zig.handle.calls
 
     def test_inject_requires_cap(self, zig):
         zig.capabilities.setcapab(KBCapabilities.INJECT, False)
         with pytest.raises(Exception, match="does not support"):
-            zig.inject("ab")
+            zig.inject(b"ab")
 
     def test_pnext(self, zig):
         assert zig.pnext(timeout=500) is None

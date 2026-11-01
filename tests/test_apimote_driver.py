@@ -151,7 +151,8 @@ class TestApimoteDriver(unittest.TestCase):
         self.assertTrue(first['validcrc'])
         self.assertEqual(first['bytes'], frame)
         queued = driver.pnext(timeout=1)
-        self.assertEqual(queued['bytes'], second)  # queue slice drops 2nd length byte
+        self.assertEqual(queued['bytes'], second)
+        self.assertIsNone(driver.packet_queue)
         driver.close()
 
     def test_pnext_queued_without_rssi(self):
@@ -159,9 +160,10 @@ class TestApimoteDriver(unittest.TestCase):
             self.skipTest("needs fake device")
         driver=APIMOTE(os.environ['APIMOTE_DEVSTRING'])
         fake = self._fake()
-        driver.packet_queue = b'\x01\x02'
+        driver.packet_queue = b'\x02\x01\x02'   # <len><frame> wire format
         driver.packet_queue_rssi = None
         result = driver.pnext()
+        self.assertEqual(result['bytes'], b'\x01\x02')
         self.assertIsNone(result['rssi'])
         self.assertIsNone(result['dbm'])
         driver.close()

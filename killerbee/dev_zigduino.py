@@ -9,11 +9,8 @@ Items still TODO:
     - add jamming support
 '''
 
-import os # type: ignore
 import time # type: ignore
-import struct # type: ignore
-import time # type: ignore
-from datetime import datetime, date, timedelta # type: ignore
+from datetime import datetime, timedelta, timezone # type: ignore
 from .kbutils import KBCapabilities, makeFCS # type: ignore
 from .GoodFETatmel128 import GoodFETatmel128rfa1 # type: ignore
 
@@ -85,7 +82,7 @@ class ZIGDUINO:
         '''
         self.capabilities.require(KBCapabilities.SNIFF)
 
-        if channel != None or page:
+        if channel is not None:
             self.set_channel(channel, page)
 
         self.__stream_open = True
@@ -113,7 +110,7 @@ class ZIGDUINO:
         '''
         self.capabilities.require(KBCapabilities.SETCHAN)
 
-        if channel >= 11 or channel <= 26:
+        if 11 <= channel <= 26:
             self._channel = channel
             self.handle.RF_setchannel(channel)
         else:
@@ -123,7 +120,7 @@ class ZIGDUINO:
     def inject(self, packet, channel=None, count=1, delay=0, page=0):
         '''
         Injects the specified packet contents.
-        @type packet: String
+        @type packet: Bytes
         @param packet: Packet contents to transmit, without FCS.
         @type channel: Integer
         @param channel: Sets the channel, optional
@@ -142,13 +139,13 @@ class ZIGDUINO:
         if len(packet) > 125:                   # 127 - 2 to accommodate FCS
             raise Exception('Packet too long')
 
-        if channel != None:
+        if channel is not None:
             self.set_channel(channel, page)
         if page:
             raise Exception('SubGHz not supported')
         self.handle.RF_autocrc(1)               #let the radio add the CRC
         for pnum in range(0, count):
-            gfready = [ord(x) for x in packet]  #convert packet string to GoodFET expected integer format
+            gfready = list(bytearray(packet))   #convert packet bytes to GoodFET expected integer format
             gfready.insert(0, len(gfready)+2)   #add a length that leaves room for CRC
             self.handle.RF_txpacket(gfready)
             time.sleep(delay)
@@ -165,9 +162,9 @@ class ZIGDUINO:
         if self.__stream_open == False:
             self.sniffer_on() #start sniffing
 
-        packet = None;
-        start = datetime.utcnow()
-        while (packet is None and (start + timedelta(microseconds=timeout) > datetime.utcnow())):
+        packet = None
+        start = datetime.now(timezone.utc)
+        while (packet is None and (start + timedelta(microseconds=timeout) > datetime.now(timezone.utc))):
             packet = self.handle.RF_rxpacket()
         if packet is None:
             return None
@@ -179,10 +176,10 @@ class ZIGDUINO:
         #Note that 0,1,2 indicies inserted twice for backwards compatibility.
         result = {0:frame, 1:validcrc, 2:rssi, 'bytes':frame, 'validcrc':validcrc, 'rssi':rssi, 'location':None}
         result['dbm'] = rssi - 45 #TODO tune specifically to the Tmote platform (does ext antenna need to different?)
-        result['datetime'] = datetime.utcnow()
+        result['datetime'] = datetime.now(timezone.utc)
         return result
 
-    def jammer_on(self, channel=None, page=0):
+    def jammer_on(self, channel=None, page=0, method=None):
         '''
         Not yet implemented.
         @type channel: Integer

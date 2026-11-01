@@ -4,11 +4,9 @@ Support for the TelosB / Tmote Sky platforms, and close clones.
 Utilizes the GoodFET firmware with CCSPI application, and the GoodFET client code.
 '''
 
-import os # type: ignore
-import time # type: ignore
-import struct # type: ignore
-import time # type: ignore
-from datetime import datetime, timedelta # type: ignore
+import os
+import time
+from datetime import datetime, timedelta, timezone
 from .kbutils import KBCapabilities, makeFCS # type: ignore
 from .GoodFETCCSPI import GoodFETCCSPI # type: ignore
 
@@ -83,13 +81,13 @@ class TELOSB:
         '''
         self.capabilities.require(KBCapabilities.SNIFF)
 
-        self.handle.RF_promiscuity(1);
-        self.handle.RF_autocrc(0);
+        self.handle.RF_promiscuity(1)
+        self.handle.RF_autocrc(0)
 
-        if channel != None:
+        if channel is not None:
             self.set_channel(channel, page)
         
-        self.handle.CC_RFST_RX();
+        self.handle.CC_RFST_RX()
 
         self.__stream_open = True
 
@@ -116,7 +114,7 @@ class TELOSB:
         '''
         self.capabilities.require(KBCapabilities.SETCHAN)
 
-        if channel >= 11 or channel <= 26:
+        if 11 <= channel <= 26:
             self._channel = channel
             self.handle.RF_setchan(channel)
         else:
@@ -128,7 +126,7 @@ class TELOSB:
     def inject(self, packet, channel=None, count=1, delay=0, page=0):
         '''
         Injects the specified packet contents.
-        @type packet: String
+        @type packet: Bytes
         @param packet: Packet contents to transmit, without FCS.
         @type channel: Integer
         @param channel: Sets the channel, optional
@@ -147,7 +145,7 @@ class TELOSB:
         if len(packet) > 125:                   # 127 - 2 to accommodate FCS
             raise Exception('Packet too long')
 
-        if channel != None:
+        if channel is not None:
             self.set_channel(channel, page)
 
         self.handle.RF_autocrc(1)               #let radio add the CRC
@@ -168,13 +166,13 @@ class TELOSB:
         @rtype: List
         @return: Returns None is timeout expires and no packet received.  When a packet is received, a dictionary is returned with the keys bytes (string of packet bytes), validcrc (boolean if a vaid CRC), rssi (unscaled RSSI), and location (may be set to None). For backwards compatibility, keys for 0,1,2 are provided such that it can be treated as if a list is returned, in the form [ String: packet contents | Bool: Valid CRC | Int: Unscaled RSSI ]
         '''
-        if self.__stream_open == False:
+        if not self.__stream_open:
             self.sniffer_on() #start sniffing
 
-        packet = None;
-        start = datetime.utcnow()
+        packet = None
+        start = datetime.now(timezone.utc)
 
-        while (packet is None and (start + timedelta(microseconds=timeout) > datetime.utcnow())):
+        while (packet is None and (start + timedelta(microseconds=timeout) > datetime.now(timezone.utc))):
             packet = self.handle.RF_rxpacket()
             rssi = self.handle.RF_getrssi() #TODO calibrate
 
@@ -188,7 +186,7 @@ class TELOSB:
         #Note that 0,1,2 indicies inserted twice for backwards compatibility.
         result = {0:frame, 1:validcrc, 2:rssi, 'bytes':frame, 'validcrc':validcrc, 'rssi':rssi, 'location':None}
         result['dbm'] = rssi - 45 #TODO tune specifically to the Tmote platform (does ext antenna need to different?)
-        result['datetime'] = datetime.utcnow()
+        result['datetime'] = datetime.now(timezone.utc)
         return result
  
     def ping(self, da, panid, sa, channel=None, page=0):

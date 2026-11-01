@@ -1,13 +1,12 @@
 from typing import Optional, Any, Dict, Union, List
 
-import struct
-import glob
 from warnings import warn
 
 from .pcapdump import *
 from .daintree import *
 from .pcapdlt import *
 
+from . import kbutils
 from .kbutils import devlist
 from .kbutils import isIpAddr
 from .kbutils import search_usb
@@ -22,7 +21,7 @@ from .dot154decode import * #would like to import only within killerbee class
 from .config import *       #to get DEV_ENABLE_* variables
 
 # Utility Functions
-def show_dev(vendor: str=None, product: str=None, gps: str=None, include: str=None) -> None:
+def show_dev(vendor: Optional[Any]=None, product: Optional[Any]=None, gps: Optional[str]=None, include: Optional[List[str]]=None) -> None:
     '''
     A basic function to output the device listing.
     Placed here for reuse, as many tool scripts were implementing it.
@@ -61,9 +60,9 @@ class KillerBee:
         self.driver: Optional[Any] = None
 
         #TODO deprecate
-        global gps_devstring
-        if gps_devstring is None and gps is not None:
-            gps_devstring = gps
+        # The GPS exclusion is shared module state in kbutils, which devlist() also consults.
+        if kbutils.gps_devstring is None and gps is not None:
+            kbutils.gps_devstring = gps
 
         if hardware is not None and device is not None:
             if hardware == "apimote":
@@ -90,7 +89,7 @@ class KillerBee:
             elif hardware == "zigduino":
                 from .dev_zigduino import ZIGDUINO
                 self.driver = ZIGDUINO(device)
-            elif hardware == "freakdruino":
+            elif hardware in ("freakduino", "freakdruino"):   # "freakdruino" is a legacy misspelling
                 from .dev_freakduino import FREAKDUINO
                 self.driver = FREAKDUINO(device)
             elif hardware == "telosb":
@@ -108,7 +107,6 @@ class KillerBee:
                     if isSewio(device):
                         from .dev_sewio import SEWIO
                         self.driver = SEWIO(dev=device)  # give it the ip address
-                    else: del isSewio
 
                 # Check if USB device
                 if device is None :
@@ -116,7 +114,7 @@ class KillerBee:
                     if result is not None:
                         self.dev = result
                 elif ":" in device:
-                    result = search_usb(None)
+                    result = search_usb(device)
                     if result is not None:
                         self.dev = result
                     else:
@@ -156,7 +154,7 @@ class KillerBee:
 
                 # If Serial, identify hardware
                 if self.dev is not None:
-                    if (self.dev == gps_devstring):
+                    if (self.dev == kbutils.gps_devstring):
                         pass
                     elif (DEV_ENABLE_SL_NODETEST and issl_nodetest(self.dev)):
                         from .dev_sl_nodetest import SL_NODETEST
@@ -239,7 +237,7 @@ class KillerBee:
         if hasattr(self, "dblog") and (self.dblog is not None):
             self.dblog.close()
 
-    def check_capability(self, capab: str) -> bool:
+    def check_capability(self, capab: int) -> bool:
         '''
         Uses the specified capability to determine if the opened device
         is supported.  Returns True when supported, else False.
@@ -399,10 +397,10 @@ class KillerBee:
         @param page: Sets the page, optional
         @rtype: None
         '''
-        if not self.is_valid_channel(channel, page):
-            raise ValueError('Invalid channel ({0}) for this device'.format(channel))
         if self.driver is None:
             raise KBInterfaceError("Driver not configured")
+        if not self.is_valid_channel(channel, page):
+            raise ValueError('Invalid channel ({0}) for this device'.format(channel))
 
         if hasattr(self, "dblog"):
             self.dblog.set_channel(channel, page)
@@ -432,11 +430,11 @@ class KillerBee:
 
     def pnext(self, timeout: int=100) -> Optional[Dict[Union[int, str], Any]]:
         '''
-        Returns packet data as a string, else None.
+        Returns packet data as a dictionary, else None.
         @type timeout: Integer
         @param timeout: Timeout to wait for packet reception in usec
         @rtype: List
-        @return: Returns None is timeout expires and no packet received.  When a packet is received, a dictionary is returned { 0: (str) packet contents | 1: (bool) Valid CRC | 2: (int) Unscaled RSSI }
+        @return: Returns None is timeout expires and no packet received.  When a packet is received, a dictionary is returned { 0: (bytes) packet contents | 1: (bool) Valid CRC | 2: (int) Unscaled RSSI }
         '''
 
         if self.driver is None:

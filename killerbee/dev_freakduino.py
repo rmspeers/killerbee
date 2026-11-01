@@ -4,12 +4,11 @@ Support from the Freakduino platform from Abika/Freaklabs.
 This is not a maintained platfrom and functionality may be broken or lacking.
 '''
 
-import usb # type: ignore
 import serial # type: ignore
-import time # type: ignore
-import struct # type: ignore
-from datetime import datetime, date # type: ignore
-from datetime import time as dttime # type: ignore
+import time
+import struct
+from datetime import datetime, date, timezone
+from datetime import time as dttime
 from .kbutils import KBCapabilities, makeFCS # type: ignore
 
 MODE_NONE    = 0x01
@@ -28,6 +27,8 @@ class FREAKDUINO:
         self.handle = None
         self.dev = serialpath
         self.date = None
+        self.mode = MODE_NONE
+        self.__stream_open = False
         self.lon, self.lat, self.alt = (None, None, None)
         self.handle = serial.Serial(port=self.dev, baudrate=57600, \
                                     timeout=1, bytesize=8, parity='N', stopbits=1, xonxoff=0)
@@ -74,10 +75,10 @@ class FREAKDUINO:
         self.handle.flush()
         time.sleep(1.5) #this delay seems crucial
 
-        self.handle.write("S")
-        self.handle.write(cmdstr)
-        if arg != None: self.handle.write(arg)
-        self.handle.write('\r')
+        self.handle.write(b"S")
+        self.handle.write(cmdstr.encode("ascii"))
+        if arg is not None: self.handle.write(arg.encode("ascii"))
+        self.handle.write(b"\r")
 
         self.handle.flush()
 
@@ -88,8 +89,8 @@ class FREAKDUINO:
         Ex: If provided cmdstr = "C!N" it will send "SC!N", telling the device to turn on sniffing ("N"),
         and it expects to receive a confirmation back "&C!N" to confirm success.
         '''
-        print("Flushing out of buffer:", self.handle.inWaiting())
-        self.handle.flushInput()
+        print("Flushing out of buffer:", self.handle.in_waiting)
+        self.handle.reset_input_buffer()
         if len(cmdstr) > 3:
             raise Exception("Command string is less than minimum length (S%s)." % cmdstr)
         self.__send_cmd(cmdstr, arg)
@@ -97,23 +98,23 @@ class FREAKDUINO:
         # TODO ugly and unreliable:
         # This should just wait for a & and then parse things after it,
         # however it seems sometimes you have to resend the command or something.
-        print("Line:", self.handle.readline(eol='&'))
+        print("Line:", self.handle.read_until(b"&"))
         counter = 0
         char = self.handle.read()
-        while (char != '&'):
-            print(self.handle.inWaiting(), "Waiting...", char)
+        while (char != b"&"):
+            print(self.handle.in_waiting, "Waiting...", char)
             time.sleep(0.01)
             if (counter > 8):
                 self.__send_cmd(cmdstr, arg)
                 counter = 0
-                print("Resend Response Line:", self.handle.readline(eol='&'))
+                print("Resend Response Line:", self.handle.read_until(b"&"))
             else: counter += 1
             char = self.handle.read()
-        response = ''
+        response = b""
         for i in range(3):
             response += self.handle.read()
 
-        if response == cmdstr[:3]:
+        if response == cmdstr[:3].encode("ascii"):
             print("Got a response:", response, "matches", cmdstr)
             return True
         else:
@@ -138,7 +139,7 @@ class FREAKDUINO:
         '''
         self.capabilities.require(KBCapabilities.SNIFF)
 
-        if channel != None:
+        if channel is not None:
             self.set_channel(channel, page)
 
         #TODO implement mode change to start sniffer sending packets to us
@@ -170,20 +171,20 @@ class FREAKDUINO:
         '''
         self.capabilities.require(KBCapabilities.SETCHAN)
 
-        if channel >= 10 or channel <= 26:
+        if page:
+            raise Exception('SubGHz not supported')
+        if 11 <= channel <= 26:
             self._channel = channel
             #TODO actually check that it responds correctly to the request
             self.__send_cmd("C!C %d" % channel)
         else:
             raise Exception('Invalid channel')
-        if page:
-            raise Exception('SubGHz not supported')
 
     # KillerBee expects the driver to implement this function
     def inject(self, packet, channel=None, count=1, delay=0, page=0):
         '''
         Injects the specified packet contents.
-        @type packet: String
+        @type packet: Bytes
         @param packet: Packet contents to transmit, without FCS.
         @type channel: Integer
         @param channel: Sets the channel, optional
@@ -202,11 +203,11 @@ class FREAKDUINO:
         if len(packet) > 125:                   # 127 - 2 to accommodate FCS
             raise Exception('Packet too long')
 
-        if channel != None:
+        if channel is not None:
             self.set_channel(channel, page)
 
         # Append two bytes to be replaced with FCS by firmware.
-        packet = ''.join([packet, "\x00\x00"])
+        packet = bytes(packet) + b"\x00\x00"
 
         for pnum in range(0, count):
             raise Exception('Not yet implemented')
@@ -218,58 +219,57 @@ class FREAKDUINO:
     #TODO I suspect that if you don't call this often enough while getting frames, the serial buffer may overflow.
     def pnext(self, timeout=100):
         '''
-        Returns packet data as a string, else None.
+        Returns packet data as a dictionary, else None.
         @type timeout: Integer
         @param timeout: Timeout to wait for packet reception in usec
         @rtype: List
         @return: Returns None is timeout expires and no packet received.  When a packet is received,
                  a list is returned, in the form [ String: packet contents | Bool: Valid CRC | Int: Unscaled RSSI ]
         '''
-        if self.__stream_open == False:
+        if not self.__stream_open:
             self.sniffer_on() #start sniffing
         return self.pnext_rec(timeout)
 
     # Bulk of pnext implementation, but does not ensure the sniffer is on first, thus usable for EEPROM reading
     def pnext_rec(self, timeout=100):
-        pdata = ''
-        ldata = ''
+        pdata = b""
+        ldata = b""
 
         self.handle.timeout=timeout         # Allow pySerial to handle timeout
         startChar = self.handle.read()
-        if startChar == None: return None   # Sense timeout case and return
+        if not startChar: return None       # Sense timeout case (pySerial returns b"") and return
 
         # Listens for serial message of general format R!<data>;
-        if startChar == "R":                # Get packet data
-            if self.handle.read() == "!":
+        if startChar == b"R":               # Get packet data
+            if self.handle.read() == b"!":
                 x = self.handle.read()
-                while (x != ";"):
+                while (x != b";"):
                     pdata += x
                     x = self.handle.read()
-        if startChar == "L":                # Get location data
-            if self.handle.read() == "!":
+        if startChar == b"L":               # Get location data
+            if self.handle.read() == b"!":
                 x = self.handle.read()
-                while (x != ";"):
+                while (x != b";"):
                     ldata += x
                     x = self.handle.read()
-        if startChar == "[":                # Sense when done reading from EEPROM
-            if self.handle.read(40) == "{[ DONE READING BACK ALL LOGGED DATA ]}]":
+        if startChar == b"[":               # Sense when done reading from EEPROM
+            if self.handle.read(40) == b"{[ DONE READING BACK ALL LOGGED DATA ]}]":
                 raise StopIteration("All Data Read")
 
         # If location received, update our local variables:
-        if ldata != None and ldata != '':
+        if ldata:
             self.processLocationUpdate(ldata)
 
-        if pdata == None or pdata == '':
+        if not pdata:
             return None
 
         # Parse received data as <rssi>!<time>!<packtlen>!<frame>
-        data = pdata.split("!", 3)
+        data = pdata.split(b"!", 3)
         try:
-            rssi = ord(data[0])
+            rssi = data[0][0]               # single raw byte -> int
             frame = data[3]
-            if frame[-2:] == makeFCS(frame[:-2]): validcrc = True
-            else: validcrc = False
-        except:
+            validcrc = (frame[-2:] == makeFCS(frame[:-2]))
+        except (IndexError, ValueError):
             print("Error parsing stream received from device:", pdata, data)
             return None
         #Return in a nicer dictionary format, so we don't have to reference by number indicies.
@@ -281,27 +281,36 @@ class FREAKDUINO:
         return result
 
     def getCaptureDateTime(self, data):
+        '''
+        Build a UTC datetime from the device's capture time field (data[1]), a 4-byte
+        little-endian value in the format hhmmsscc (cc = centiseconds), and the last
+        date received from the GPS. Falls back to the current UTC time if the device
+        time is unusable.
+        '''
+        timestr = None
         try:
-            timestr = "%08d" % (struct.unpack('L', data[1])[0]) #in format hhmmsscc
-            time = dttime(int(timestr[:2]), int(timestr[2:4]), int(timestr[4:6]), int(timestr[6:]))
-        except:
+            timestr = "%08d" % (struct.unpack('<L', data[1])[0]) #in format hhmmsscc
+            captime = dttime(int(timestr[:2]), int(timestr[2:4]), int(timestr[4:6]), int(timestr[6:]) * 10000)
+        except (struct.error, ValueError, TypeError, IndexError):
             print("Issue with time format:", timestr, data)
-            time = None
-        if self.date == None: self.date = date.utcnow().date()
-        if time == None or time == dttime.min: time = (datetime.utcnow()).time()
-        #TODO address timezones by going to UTC everywhere
-        return datetime.combine(self.date, time)
+            captime = None
+        now = datetime.now(timezone.utc)
+        if self.date is None: self.date = now.date()
+        if captime is None or captime == dttime.min: captime = now.time()
+        return datetime.combine(self.date, captime, tzinfo=timezone.utc)
 
     def processLocationUpdate(self, ldata):
         '''
         Take a location string passed from the device and update the driver's internal state of last received location.
-        Format of ldata: longlatialtidate
+        Format of ldata: 4-byte little-endian lon, lat, alt (signed), then date (unsigned, ddmmyy).
         '''
-        self.lon = struct.unpack('l', ldata[0:4])[0]
-        self.lat = struct.unpack('l', ldata[4:8])[0]
-        self.alt = struct.unpack('l', ldata[8:12])[0]
-        date = str(struct.unpack('L', ldata[12:16])[0])
-        self.date = datetime.date(date[-2:], date[-4:-2], date[:-4])
+        self.lon, self.lat, self.alt = struct.unpack('<lll', ldata[0:12])
+        datenum = struct.unpack('<L', ldata[12:16])[0]
+        day, month, year = datenum // 10000, (datenum // 100) % 100, datenum % 100
+        try:
+            self.date = date(2000 + year, month, day)
+        except ValueError:
+            pass    # device has no valid GPS date yet; keep the previous one
         #TODO parse data formats (lon=-7228745 lat=4370648 alt=3800 age=63 date=70111 time=312530)
         print(self.lon, self.lat, self.alt, self.date)
 
@@ -324,10 +333,7 @@ class FREAKDUINO:
         '''
         self.capabilities.require(KBCapabilities.PHYJAM)
 
-        if self.__cmdmode != RZ_CMD_MODE_AC:
-            self._set_mode(RZ_CMD_MODE_AC)
-
-        if channel != None:
+        if channel is not None:
             self.set_channel(channel, page)
 
         #TODO implement

@@ -2,9 +2,7 @@ from typing import Optional, Dict, Union, Any, List
 
 import os
 import time
-import struct
-import time 
-from datetime import datetime, timedelta 
+from datetime import datetime, timedelta, timezone
 from .kbutils import KBCapabilities, makeFCS 
 from .GoodFETCCSPI import GoodFETCCSPI
 
@@ -47,7 +45,7 @@ class APIMOTE:
     def close(self) -> None:
         
         if self.handle is None:
-            raise Exception("Handle does not exist");
+            raise Exception("Handle does not exist")
 
         self.handle = None
 
@@ -82,7 +80,7 @@ class APIMOTE:
         if self.handle is None:
             raise Exception("Handle does not exist")
 
-        if channel >= 11 and channel <= 26:
+        if 11 <= channel <= 26:
             self._channel = channel
         else:
             raise Exception('Invalid channel')
@@ -110,7 +108,7 @@ class APIMOTE:
         if self.handle is None:
             raise Exception("Handle does not exist")
 
-        if self.__stream_open == False:
+        if not self.__stream_open:
             self.sniffer_on()
 
         packet: Optional[bytes] = None
@@ -132,7 +130,7 @@ class APIMOTE:
             'validcrc': validcrc, 
             'rssi': rssi, 
             'location': None,
-            'datetime': datetime.utcnow()
+            'datetime': datetime.now(timezone.utc)
         }
         if rssi is None:
             result['dbm'] = None

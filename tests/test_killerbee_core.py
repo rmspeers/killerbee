@@ -337,6 +337,15 @@ def test_usb_detection(monkeypatch, vid, pid, module, cls, device):
     assert isinstance(kb.driver, DummyDriver)
 
 
+def test_usb_search_uses_requested_bus_device(monkeypatch):
+    seen = []
+    _patch_driver(monkeypatch, "dev_rzusbstick", "RZUSBSTICK")
+    dev = types.SimpleNamespace(idVendor=kbutils.RZ_USB_VEND_ID, idProduct=kbutils.RZ_USB_PROD_ID)
+    monkeypatch.setattr(kbmod, "search_usb", lambda d: seen.append(d) or dev)
+    KillerBee("3:7")
+    assert seen == ["3:7"]
+
+
 def test_usb_zena_and_unknown(monkeypatch):
     zena = types.SimpleNamespace(idVendor=kbutils.ZN_USB_VEND_ID, idProduct=kbutils.ZN_USB_PROD_ID)
     monkeypatch.setattr(kbmod, "search_usb", lambda d: zena)
@@ -408,10 +417,10 @@ def test_serial_unknown_device(monkeypatch):
 
 def test_serial_gps_skipped(monkeypatch):
     monkeypatch.setattr(kbmod, "search_usb", lambda d: None)
-    monkeypatch.setattr(kbmod, "gps_devstring", None)
+    monkeypatch.setattr(kbmod.kbutils, "gps_devstring", None)
     with pytest.raises(KBInterfaceError, match="cannot find device"):
         KillerBee("/dev/ttyUSB5", gps="/dev/ttyUSB5")
-    assert kbmod.gps_devstring == "/dev/ttyUSB5"
+    assert kbmod.kbutils.gps_devstring == "/dev/ttyUSB5"
 
 
 def test_no_device_uses_first_serial_port(monkeypatch):

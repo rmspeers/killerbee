@@ -91,7 +91,7 @@ class KBCapabilities:
         self._capabilities[capab] = value
 
     def require(self, capab: int) -> None:
-        if self.check(capab) != True:
+        if not self.check(capab):
             raise Exception('Selected hardware does not support required capability (%d).' % capab)
 
     def frequency(self, channel: Optional[int]=None, page: int=0) -> int:
@@ -106,6 +106,8 @@ class KBCapabilities:
             return 0
         #FREQ_2400
         if page == 0:
+            if channel < 11:    #TODO: FREQ_900 not yet supported
+                return 0
             base = 2405000
             step = 5000
             first = 11
@@ -153,9 +155,9 @@ class KBCapabilities:
                 return False
             return True
 
-        if (channel >= 11 and channel <= 26) and self.check(self.FREQ_2400):
+        if (11 <= channel <= 26) and self.check(self.FREQ_2400):
             return True
-        if (channel >= 1 and channel <= 10) and self.check(self.FREQ_900):
+        if (1 <= channel <= 10) and self.check(self.FREQ_900):
             return True
         return False
 
@@ -197,8 +199,8 @@ class findFromListAndBusDevId(findFromList):
         is in these lists.
         '''
         if findFromList.__call__(self, device)                      and \
-           (self._busNum == None or device.bus == self._busNum)     and \
-           (self._devNum == None or device.address == self._devNum)     :
+           (self._busNum is None or device.bus == self._busNum)     and \
+           (self._devNum is None or device.address == self._devNum)     :
             return True
 
         return False
@@ -493,7 +495,7 @@ def search_usb(device: Any) -> Any:
     <BusNumber>:<DeviceNumber>, and returns the pyUSB objects
     for bus and device that correspond to the identifier string.
     """
-    if device == None:
+    if device is None:
         busNum: Optional[int] = None
         devNum: Optional[int] = None
     else:
@@ -502,64 +504,65 @@ def search_usb(device: Any) -> Any:
         busNum, devNum = list(map(int, device.split(':', 1)))
     return usb.core.find(custom_match=findFromListAndBusDevId(busNum, devNum, usbVendorList, usbProductList)) #backend=backend, 
 
-def hexdump(src, length=16):
+def hexdump(src: Union[bytes, bytearray, str], length: int=16) -> str:
     '''
     Creates a tcpdump-style hex dump string output.
-    @type src: String
-    @param src: Input string to convert to hexdump output.
+    @type src: Bytes
+    @param src: Input data to convert to hexdump output. A str is encoded as UTF-8 first.
     @type length: Int
     @param length: Optional length of data for a single row of output, def=16
     @rtype: String
     '''
-    FILTER = b''.join([(len(repr(chr(x))) == 3) and chr(x) or '.' for x in range(256)])
+    if isinstance(src, str):
+        src = src.encode('utf-8')
     result = []
     for i in range(0, len(src), length):
-       chars = src[i:i+length]
-       hex = ' '.join(["%02x" % ord(x) for x in chars])
-       printable = ''.join(["%s" % ((ord(x) <= 127 and FILTER[ord(x)]) or '.') for x in chars])
-       result.append("%04x:  %-*s  %s\n" % (i, length*3, hex, printable))
+        chars = src[i:i+length]     # iterating bytes yields ints
+        hexstr = ' '.join(["%02x" % x for x in chars])
+        printable = ''.join([chr(x) if 0x20 <= x < 0x7f else '.' for x in chars])
+        result.append("%04x:  %-*s  %s\n" % (i, length*3, hexstr, printable))
     return ''.join(result)
 
 
-def randbytes(size: int) -> str:
+def randbytes(size: int) -> bytes:
     '''
-    Returns a random string of size bytes.  Not cryptographically safe.
+    Returns random bytes of length size.  Not cryptographically safe.
     @type size: Int
     @param size: Length of random data to return.
-    @rtype: String
+    @rtype: Bytes
     '''
-    return ''.join(chr(random.randrange(0,256)) for i in range(size))
+    return random.randbytes(size)
 
 
-def randmac(length: int=8) -> str:
+def randmac(length: int=8) -> bytes:
     '''
     Returns a random MAC address using a list valid OUI's from ZigBee device 
     manufacturers.  Data is returned in air-format byte order (LSB first).
-    @type length: String
+    @type length: Int
     @param length: Optional length of MAC address, def=8.  
         Minimum address return length is 3 bytes for the valid OUI.
-    @rtype: String
+    @rtype: Bytes
     @returns: A randomized MAC address in a little-endian byte string.
     '''
     # Valid OUI prefixes for MAC addresses
-    prefixes: List[str] = [ 
-                "\x00\x0d\x6f",     # Ember
-                "\x00\x12\x4b",     # TI
-                "\x00\x04\xa3",     # Microchip
-                "\x00\x04\x25",     # Atmel
-                "\x00\x11\x7d",     # ZMD
-                "\x00\x13\xa2",     # MaxStream
-                "\x00\x30\x66",     # Cirronet
-                "\x00\x0b\x57",     # Silicon Laboratories
-                "\x00\x04\x9f",     # Freescale Semiconductor
-                "\x00\x21\xed",     # Telegesis
-                "\x00\xa0\x50"      # Cypress
+    prefixes: List[bytes] = [ 
+                b"\x00\x0d\x6f",     # Ember
+                b"\x00\x12\x4b",     # TI
+                b"\x00\x04\xa3",     # Microchip
+                b"\x00\x04\x25",     # Atmel
+                b"\x00\x11\x7d",     # ZMD
+                b"\x00\x13\xa2",     # MaxStream
+                b"\x00\x30\x66",     # Cirronet
+                b"\x00\x0b\x57",     # Silicon Laboratories
+                b"\x00\x04\x9f",     # Freescale Semiconductor
+                b"\x00\x21\xed",     # Telegesis
+                b"\x00\xa0\x50"      # Cypress
                 ]
 
-    prefix: str = random.choice(prefixes)
-    suffix: str = randbytes(length-3)
+    prefix: bytes = random.choice(prefixes)
+    suffix: bytes = randbytes(length-3)
     # Reverse the address for use in a packet
-    return ''.join([prefix, suffix])[::-1]
+    return (prefix + suffix)[::-1]
 
 
 def makeFCS(data: bytes) -> bytes:
