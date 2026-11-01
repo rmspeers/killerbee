@@ -10,47 +10,25 @@
 
 // Explaination of Python Build Values http://docs.python.org/c-api/arg.html#Py_BuildValue
 
+/* Required so that "#" format units use Py_ssize_t (mandatory since 3.10). */
+#define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <stdio.h>
 #include <gcrypt.h>
 #include "zigbee_crypt.h"
 
 
-#if PY_MAJOR_VERSION >= 3
-    #define ZIGBEE_MOD_DEF \
-        static struct PyModuleDef moduledef = { \
-            PyModuleDef_HEAD_INIT, \
-            "zigbee_crypt", \
-            NULL, \
-            -1, \
-            zigbee_crypt_Methods, \
-            NULL, \
-            NULL, \
-            NULL, \
-            NULL, \
-        }; \
-        module = PyModule_Create(&moduledef);
-    #define ZIGBEE_CRYPT_INIT PyMODINIT_FUNC PyInit_zigbee_crypt(void)
-    #define ZIGBEE_CRYPT_INIT_CALL PyInit_zigbee_crypt();
-#else
-    #define ZIGBEE_MOD_DEF \
-        module = Py_InitModule("zigbee_crypt", zigbee_crypt_Methods);
-    #define ZIGBEE_CRYPT_INIT void initzigbee_crypt(void)
-    #define ZIGBEE_CRYPT_INIT_CALL initzigbee_crypt();
-#endif
-
-
 static PyObject *zigbee_crypt_encrypt_ccm(PyObject *self, PyObject *args) {
 	// This was modeled after zigbee_crypt_decrypt_ccm in reverse
 	const char			*pZkey;
-	int					sizeZkey;
+	Py_ssize_t					sizeZkey;
 	const char			*pNonce;
-	int					sizeNonce;
+	Py_ssize_t					sizeNonce;
 	int					sizeMIC;
 	const char			*pUnencryptedData;
-	int					sizeUnencryptedData;
+	Py_ssize_t					sizeUnencryptedData;
 	const char			*zigbeeData;
-	int					sizeZigbeeData;
+	Py_ssize_t					sizeZigbeeData;
 	int i, j;
 	PyObject			*res;
 
@@ -62,11 +40,7 @@ static PyObject *zigbee_crypt_encrypt_ccm(PyObject *self, PyObject *args) {
 	/* Cipher Instance. */
 	gcry_cipher_hd_t	cipher_hd;
 
-#if PY_MAJOR_VERSION >= 3
 	if (!PyArg_ParseTuple(args, "y#y#iy#y#",
-#else
-	if (!PyArg_ParseTuple(args, "s#s#is#s#",
-#endif
 								&pZkey, &sizeZkey,
 								&pNonce, &sizeNonce,
 								&sizeMIC,
@@ -92,7 +66,7 @@ static PyObject *zigbee_crypt_encrypt_ccm(PyObject *self, PyObject *args) {
 	memset(pMIC, 0, ZBEE_SEC_CONST_MICSIZE);	// set both mics to 0
 	memset(pEncMIC, 0, ZBEE_SEC_CONST_MICSIZE);
 
-	pEncrypted = malloc(sizeUnencryptedData);
+	pEncrypted = malloc(sizeUnencryptedData > 0 ? sizeUnencryptedData : 1);
 	if (pEncrypted == NULL) {
 		PyErr_SetString(PyExc_MemoryError, "could not allocate memory");
 		return NULL;
@@ -236,26 +210,22 @@ static PyObject *zigbee_crypt_encrypt_ccm(PyObject *self, PyObject *args) {
 	/* Done with the CTR Cipher. */
 	gcry_cipher_close(cipher_hd);
 
-#if PY_MAJOR_VERSION >= 3
 	res = Py_BuildValue("(y#y#)", pEncrypted, sizeUnencryptedData, pEncMIC, sizeMIC);
-#else
-	res = Py_BuildValue("(s#s#)", pEncrypted, sizeUnencryptedData, pEncMIC, sizeMIC);
-#endif
 	free(pEncrypted);
 	return res;
 };
 
 static PyObject *zigbee_crypt_decrypt_ccm(PyObject *self, PyObject *args) {
 	const char			*pZkey;
-	int					sizeZkey;
+	Py_ssize_t					sizeZkey;
 	const char			*pNonce;
-	int					sizeNonce;
+	Py_ssize_t					sizeNonce;
 	const char			*pOldMIC;
-	int					sizeMIC;
+	Py_ssize_t			sizeMIC;
 	const char			*pEncryptedData;
-	int					sizeEncryptedData;
+	Py_ssize_t					sizeEncryptedData;
 	const char			*zigbeeData;
-	int					sizeZigbeeData;
+	Py_ssize_t					sizeZigbeeData;
 	PyObject			*res;
 
 	char				pMIC[ZBEE_SEC_CONST_MICSIZE];
@@ -263,11 +233,7 @@ static PyObject *zigbee_crypt_decrypt_ccm(PyObject *self, PyObject *args) {
 	char				*pUnencrypted;
 	char				cipher_in[ZBEE_SEC_CONST_BLOCKSIZE];
 	char				cipher_out[ZBEE_SEC_CONST_BLOCKSIZE];
-#if PY_MAJOR_VERSION >= 3
 	if (!PyArg_ParseTuple(args, "y#y#y#y#y#",
-#else
-	if (!PyArg_ParseTuple(args, "s#s#s#s#s#",
-#endif
 								&pZkey, &sizeZkey,
 								&pNonce, &sizeNonce,
 								&pOldMIC, &sizeMIC,
@@ -295,7 +261,7 @@ static PyObject *zigbee_crypt_decrypt_ccm(PyObject *self, PyObject *args) {
 
 	memset(pUnencMIC, 0, ZBEE_SEC_CONST_MICSIZE);
 
-	pUnencrypted = malloc(sizeEncryptedData);
+	pUnencrypted = malloc(sizeEncryptedData > 0 ? sizeEncryptedData : 1);
 	if (pUnencrypted == NULL) {
 		PyErr_SetString(PyExc_MemoryError, "could not allocate memory");
 		return NULL;
@@ -460,11 +426,7 @@ static PyObject *zigbee_crypt_decrypt_ccm(PyObject *self, PyObject *args) {
 	if (memcmp(cipher_out, pUnencMIC, sizeMIC) == 0) {
 		j = 1;
 	}
-#if PY_MAJOR_VERSION >= 3
 	res = Py_BuildValue("(y#i)", pUnencrypted, sizeEncryptedData, j);
-#else
-	res = Py_BuildValue("(s#i)", pUnencrypted, sizeEncryptedData, j);
-#endif
 	free(pUnencrypted);
 	return res;
 };
@@ -594,8 +556,8 @@ zbee_sec_hash(char *input, int input_len, char *output)
  */
 static PyObject *zigbee_sec_key_hash(PyObject *self, PyObject *args) {
 	const char			*key;
-	int					sizeKey;
-	const char           input;
+	Py_ssize_t					sizeKey;
+	char				input;
 
     char          hash_in[2*ZBEE_SEC_CONST_BLOCKSIZE];
     char          hash_out[ZBEE_SEC_CONST_BLOCKSIZE+1];
@@ -603,7 +565,11 @@ static PyObject *zigbee_sec_key_hash(PyObject *self, PyObject *args) {
     static const char ipad = 0x36;
     static const char opad = 0x5c;
 
-	if (!PyArg_ParseTuple(args, "s#c", &key, &sizeKey, &input)) {
+	if (!PyArg_ParseTuple(args, "y#c", &key, &sizeKey, &input)) {
+		return NULL;
+	}
+	if (sizeKey != ZBEE_SEC_CONST_KEYSIZE) {
+		PyErr_SetString(PyExc_ValueError, "incorrect key size (must be 16)");
 		return NULL;
 	}
 
@@ -620,7 +586,7 @@ static PyObject *zigbee_sec_key_hash(PyObject *self, PyObject *args) {
     /* Hash the contents of hash_in to get the final result. */
     zbee_sec_hash(hash_in, 2*ZBEE_SEC_CONST_BLOCKSIZE, hash_out);
 
-	return Py_BuildValue("y", hash_out);
+	return Py_BuildValue("y#", hash_out, (Py_ssize_t)ZBEE_SEC_CONST_BLOCKSIZE);
 } /* zbee_sec_key_hash */
 
 
@@ -634,22 +600,23 @@ static PyMethodDef zigbee_crypt_Methods[] = {
 
 
 
-ZIGBEE_CRYPT_INIT
+static struct PyModuleDef zigbee_crypt_moduledef = {
+	PyModuleDef_HEAD_INIT,
+	"zigbee_crypt",
+	NULL,
+	-1,
+	zigbee_crypt_Methods,
+	NULL, NULL, NULL, NULL,
+};
+
+PyMODINIT_FUNC PyInit_zigbee_crypt(void)
 {
-    PyObject *module;
-    ZIGBEE_MOD_DEF
-    return module;
-}
-
-
-int main(int argc, char *argv[]) {
-#if PY_MAJOR_VERSION >= 3
-	Py_SetProgramName((wchar_t *)argv[0]);
-#else
-	Py_SetProgramName(argv[0]);
-#endif
-
-	Py_Initialize();
-	ZIGBEE_CRYPT_INIT_CALL
-	return 0;
+	/* Initialize libgcrypt (idempotent; must happen before any other gcry_* call). */
+	if (!gcry_check_version(GCRYPT_VERSION)) {
+		PyErr_SetString(PyExc_ImportError, "libgcrypt version mismatch");
+		return NULL;
+	}
+	gcry_control(GCRYCTL_DISABLE_SECMEM, 0);
+	gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
+	return PyModule_Create(&zigbee_crypt_moduledef);
 }

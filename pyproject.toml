@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "killerbee"
+version = "3.0.0b2"
+description = "ZigBee and IEEE 802.15.4 Attack Framework and Tools"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE.txt" }
+authors = [
+    { name = "Joshua Wright", email = "jwright@willhackforsushi.com" },
+    { name = "Ryan Speers", email = "ryan@riverloopsecurity.com" },
+]
+dependencies = [
+    "pyserial>=3.0",
+    "pyusb>=1.0",
+    "pycryptodome",
+    "scapy>=2.4.3",
+]
+
+[project.optional-dependencies]
+# rangeparser (used by some tools) does not build on Python 3; install only if it works for you.
+rangeparser = ["rangeparser"]
+test = ["pytest", "pytest-cov"]
+dev = ["killerbee[test]", "build", "setuptools>=64", "wheel"]
+
+[tool.setuptools]
+packages = ["killerbee"]
+script-files = [
+    "tools/zbdump", "tools/zbgoodfind", "tools/zbid", "tools/zbreplay",
+    "tools/zbconvert", "tools/zbdsniff", "tools/zbstumbler", "tools/zbassocflood",
+    "tools/zbscapy", "tools/zbwireshark", "tools/zbkey",
+    "tools/zbwardrive", "tools/zbopenear", "tools/zbfakebeacon",
+    "tools/zborphannotify", "tools/zbpanidconflictflood", "tools/zbrealign", "tools/zbcat",
+    "tools/zbjammer", "tools/kbbootloader",
+]

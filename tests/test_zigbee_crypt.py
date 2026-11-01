@@ -3,35 +3,12 @@ import struct
 import argparse
 import os
 
-import subprocess
-import sys
-
 import pytest
 
 import zigbee_crypt as _zc
 from zigbee_crypt import *
 
 KEY = bytes(range(16))
-_PROBE = ("import zigbee_crypt as z;"
-          "z.sec_key_hash(bytes(range(16)), b'\\x00');"
-          "z.encrypt_ccm(bytes(range(16)), bytes(range(13)), 4, b'abcd', b'\\0\\0');")
-
-
-def _c_ext_works():
-    """The C extension is probed in a subprocess because it can segfault."""
-    r = subprocess.run([sys.executable, "-c", _PROBE], capture_output=True)
-    return r.returncode == 0
-
-
-C_EXT_OK = _c_ext_works()
-
-# GENUINE BUG: the zigbee_crypt C extension (zigbee_crypt/zigbee_crypt.c) segfaults
-# on Python 3.13 for valid arguments (it parses '#' formats into int sizes without
-# PY_SSIZE_T_CLEAN, and sec_key_hash dereferences the key pointer unsafely).
-c_ext_bug = pytest.mark.xfail(
-    not C_EXT_OK, strict=False, run=False,
-    reason="zigbee_crypt C extension segfaults on Python 3.13 (PY_SSIZE_T_CLEAN / int size)")
-
 
 class TestPyZigbeeCryptSubstitute(unittest.TestCase):
     """Validates the pure-python substitute against the same known vectors."""
@@ -52,12 +29,30 @@ class TestPyZigbeeCryptSubstitute(unittest.TestCase):
 
 class TestZigbeeCrypt(unittest.TestCase):
     def test_argument_validation(self):
-        """Argument errors are raised before the buggy code paths are reached."""
         self.assertRaises(TypeError, _zc.encrypt_ccm)
         self.assertRaises(TypeError, _zc.decrypt_ccm, 1)
         self.assertRaises(TypeError, _zc.sec_key_hash, 1, 2)
+        n = bytes(13)
+        self.assertRaises(ValueError, _zc.sec_key_hash, b'short', b'\x00')
+        self.assertRaises(ValueError, _zc.encrypt_ccm, b'short', n, 4, b'a', b'')
+        self.assertRaises(ValueError, _zc.encrypt_ccm, KEY, b'short', 4, b'a', b'')
+        self.assertRaises(ValueError, _zc.encrypt_ccm, KEY, n, 5, b'a', b'')
+        self.assertRaises(ValueError, _zc.decrypt_ccm, KEY, n, bytes(17), b'a', b'')
 
-    @c_ext_bug
+    def test_roundtrip_and_tamper(self):
+        n = bytes(range(13))
+        for mic_len in (0, 4, 8, 16):
+            for pt in (b'', b'x', bytes(range(40))):
+                enc, mic = _zc.encrypt_ccm(KEY, n, mic_len, pt, b'hdr')
+                self.assertEqual(len(mic), mic_len)
+                self.assertEqual((pt, 1), _zc.decrypt_ccm(KEY, n, mic, enc, b'hdr'))
+        enc, mic = _zc.encrypt_ccm(KEY, n, 4, b'abcd', b'hdr')
+        self.assertEqual(0, _zc.decrypt_ccm(KEY, n, mic, enc, b'HDR')[1])
+
+    def test_key_hash_with_embedded_nul(self):
+        """Result is a full 16 bytes even if it contains NUL bytes."""
+        self.assertEqual(16, len(_zc.sec_key_hash(bytes(16), b'\x00')))
+
     def test_encrypt_ccm(self):
         key = b'\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f'
         nonce = b'\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c'
@@ -70,7 +65,6 @@ class TestZigbeeCrypt(unittest.TestCase):
         self.assertEqual(b'\x17\x36\xb7\x8c', enc_data)
         self.assertEqual(b'\xfc\xe0\xce\x86', mic)
 
-    @c_ext_bug
     def test_decrypt_cm(self):
         key = b'\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f'
         nonce = b'\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c'
@@ -83,7 +77,6 @@ class TestZigbeeCrypt(unittest.TestCase):
         self.assertEqual(b'\x01\x02\x03\x04', pt_data) 
         self.assertTrue(mic_check)
 
-    @c_ext_bug
     def test_sec_key_hash(self):
         key = b'\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f'
         key_hash = sec_key_hash(key, b'\x00') 

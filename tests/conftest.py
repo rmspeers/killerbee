@@ -150,8 +150,9 @@ def fake_serial(monkeypatch):
 
 # ---------------------------------------------------------------------------
 # Pure-python stand-in for the zigbee_crypt C extension (pycryptodome based).
-# The in-tree C extension segfaults on Python 3.13 (see tests/test_zigbee_crypt.py),
-# so tests of killerbee.scapy_extensions use this substitute instead.
+# Lets tests of killerbee.scapy_extensions run without a compiled extension; it is
+# cross-checked against the same known vectors as the real C extension in
+# tests/test_zigbee_crypt.py.
 # ---------------------------------------------------------------------------
 class PyZigbeeCrypt:
     """Drop-in replacement for the zigbee_crypt module API."""
