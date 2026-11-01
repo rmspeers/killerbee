@@ -3,9 +3,9 @@ import struct
 
 import pytest
 
-from killerbee.pcapdump import PcapDumper, PcapReader
-from killerbee.daintree import DainTreeDumper, DainTreeReader
 import killerbee.pcapdlt as pcapdlt
+from killerbee.daintree import DainTreeDumper, DainTreeReader
+from killerbee.pcapdump import PcapDumper, PcapReader
 
 FRAME = bytes.fromhex("61881234ffff0102030405060708")  # arbitrary 802.15.4-ish bytes
 
@@ -78,7 +78,7 @@ def test_dump_bad_savefile():
 def test_dump_flush_error():
     class Bad(io.BytesIO):
         def flush(self):
-            raise IOError("boom")
+            raise OSError("boom")
 
     d = PcapDumper(195, Bad())
     with pytest.raises(IOError):

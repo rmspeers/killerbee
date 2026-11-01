@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # This program is for debugging purposes only
 import sys
-from killerbee import *
 from time import sleep
+
+from killerbee import *
 
 
 def test_functions():

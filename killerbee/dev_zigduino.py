@@ -11,8 +11,9 @@ Items still TODO:
 
 import time  # type: ignore
 from datetime import datetime, timedelta, timezone  # type: ignore
-from .kbutils import KBCapabilities, makeFCS  # type: ignore
+
 from .GoodFETatmel128 import GoodFETatmel128rfa1  # type: ignore
+from .kbutils import KBCapabilities, makeFCS  # type: ignore
 
 ATMEL_REG_SYNC = 0x0B
 

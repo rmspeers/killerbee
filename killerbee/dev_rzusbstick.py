@@ -1,9 +1,10 @@
+import struct  # type: ignore
+import time  # type: ignore
+from datetime import datetime  # type: ignore
+
 import usb.core  # type: ignore
 import usb.util  # type: ignore
 
-import time  # type: ignore
-import struct  # type: ignore
-from datetime import datetime  # type: ignore
 from .kbutils import KBCapabilities  # type: ignore
 
 # Functions for RZUSBSTICK, not all are implemented in firmware
@@ -120,7 +121,7 @@ class RZUSBSTICK:
         self._page = 0
         self.dev = dev
 
-        if self.dev != None:
+        if self.dev is not None:
             self.__handle_open()
         else:
             raise Exception("No interface found")
@@ -314,7 +315,7 @@ class RZUSBSTICK:
         if self.__cmdmode != RZ_CMD_MODE_AC:
             self._set_mode(RZ_CMD_MODE_AC)
 
-        if channel != None:
+        if channel is not None:
             self.set_channel(channel, page)
 
         self._open_stream()
@@ -342,7 +343,7 @@ class RZUSBSTICK:
         if self.__cmdmode != RZ_CMD_MODE_AC:
             self._set_mode(RZ_CMD_MODE_AC)
 
-        if channel != None:
+        if channel is not None:
             self.set_channel(channel, page)
 
         self.__usb_write(RZ_USB_COMMAND_EP, [RZ_CMD_JAMMER_ON])
@@ -455,7 +456,7 @@ class RZUSBSTICK:
         if len(packet) > 125:  # 127 - 2 to accommodate FCS
             raise Exception("Packet too long")
 
-        if channel != None:
+        if channel is not None:
             self.set_channel(channel, page)
 
         # Append two bytes to be replaced with FCS by firmware.
@@ -501,7 +502,7 @@ class RZUSBSTICK:
                     raise e
 
             # PyUSB returns an empty tuple occasionally, handle as "no data"
-            if pdata == None or pdata == () or len(pdata) == 0:
+            if pdata is None or pdata == () or len(pdata) == 0:
                 return None
 
             if pdata[0] == RZ_EVENT_STREAM_AC_DATA and ret is None:

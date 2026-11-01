@@ -1,11 +1,12 @@
-import unittest
-import struct
 import argparse
 import os
-from scapy.all import *
-from killerbee.scapy_extensions import *
+import struct
+import unittest
 
 import pytest
+from scapy.all import *
+
+from killerbee.scapy_extensions import *
 
 
 @pytest.mark.usefixtures("apimote_env")
@@ -132,7 +133,8 @@ ENC_PKT = b'a\x88\xe0|F\x00\x00s\xc5H"\x00\x00s\xc5\x1e\x00(\xee\xee\x00\x00\x8a
 NWK_KEY = b"\xe4\x2f\xc8\x5f\x9b\xaf\x5f\x4f\xb5\x8e\x6a\x1d\xbd\x2a\x13\x45"
 
 
-from test_dot154decode import secured_frame as _mac_secured_frame, KEY as MAC_KEY
+from test_dot154decode import KEY as MAC_KEY
+from test_dot154decode import secured_frame as _mac_secured_frame
 
 MAC_PKT, _ = _mac_secured_frame()
 
@@ -324,7 +326,7 @@ class TestKbScapyRadio:
 
 class TestKbScapyFiles:
     def _write_pcap(self, path, frames):
-        from killerbee import PcapDumper, DLT_IEEE802_15_4
+        from killerbee import DLT_IEEE802_15_4, PcapDumper
 
         d = PcapDumper(DLT_IEEE802_15_4, str(path))
         for f in frames:
@@ -558,6 +560,7 @@ class TestKbGetNetworkKeyMocked:
 class TestKbSendRealtime:
     def test_realtime_pacing(self, apimote_env, monkeypatch):
         import time as _t
+
         import killerbee.scapy_extensions as se
 
         kb = KillerBee()

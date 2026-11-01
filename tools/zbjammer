@@ -5,10 +5,10 @@ zbjammer: enable Zigbee jamming (firmware option)
 rfidiot <adam@algroup.co.uk>
 """
 
+import argparse
+import signal
 import sys
 import time
-import signal
-import argparse
 
 from killerbee import *
 
@@ -34,7 +34,7 @@ if args.showdev:
     show_dev()
     sys.exit(0)
 
-if args.channel == None:
+if args.channel is None:
     print("ERROR: Must specify a channel.", file=sys.stderr)
     sys.exit(1)
 

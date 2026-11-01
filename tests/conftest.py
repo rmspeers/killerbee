@@ -138,8 +138,9 @@ def fake_serial(monkeypatch):
     Returns a list that collects every instance created (``fake_serial[-1]``
     is the most recent port).
     """
-    import serial
     import time
+
+    import serial
 
     monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
     instances = []
@@ -232,8 +233,9 @@ def apimote_env(monkeypatch):
     if real:
         yield real
         return
-    import serial
     import time
+
+    import serial
 
     monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
     monkeypatch.setenv("APIMOTE_DEVSTRING", FAKE_DEVSTRING)

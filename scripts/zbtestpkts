@@ -10,11 +10,11 @@ Requires the KillerBee library.
 2012-13 rmspeers
 """
 
-import sys
+import argparse
 import os
 import signal
+import sys
 import time
-import argparse
 
 from killerbee import *
 
@@ -118,7 +118,7 @@ if __name__ == "__main__":
         packet = kb.pnext()
         notoursprob = 0  # as this gets bigger, we have less faith the rx'ed frame is meant for us
         issuesinpkt = 0  # number of bad things in the pkt
-        if packet != None:
+        if packet is not None:
             rxcount += 1
             try:
                 rxseqnum = packet["bytes"][0]

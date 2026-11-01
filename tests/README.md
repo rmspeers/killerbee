@@ -1,4 +1,4 @@
-# Testing 
+# Testing
 
 ## Setup
 
@@ -8,7 +8,7 @@ $ cd tests/
 $ APIMOTE_DEVSTRING=/dev/ttyUSB0 nose2 -v
 ```
 
-## Test Coverage 
+## Test Coverage
 
 Tests have currently only been written for and run using an Apimote, for many tests interaction with the device is necessary and the environment variable `APIMOTE_DEVSTRING` should point to the device.
 
@@ -32,7 +32,7 @@ A few functions for scapy_extension require reading packet or extracting informa
 | KillerBee.get_capabilities | :white_check_mark: | |
 | KillerBee.enter_bootloader | :white_check_mark: | Apimote driver does not support function |
 | KillerBee.get_bootloader_version | :white_check_mark: | Apimote driver does not support function |
-| KillerBee.get_bootloader_signature | :white_check_mark: | Apimote driver does not support function | 
+| KillerBee.get_bootloader_signature | :white_check_mark: | Apimote driver does not support function |
 | KillerBee.bootloader_sign_on | :white_check_mark: | Apimote driver does not support function |
 | KillerBee.bootloader_start_application | :white_check_mark: | Apimote driver does not support function |
 | KillerBee.channel (property) | :white_check_mark: | |
@@ -43,7 +43,7 @@ A few functions for scapy_extension require reading packet or extracting informa
 | KillerBee.jammer_on | :white_check_mark: | Feature not supported on Apimote |
 | KillerBee.jammer_off | :white_check_mark: | Feature not supported on Apimote |
 
-### Apimote Driver 
+### Apimote Driver
 
 `killerbee/dev_apimote.py`
 
@@ -101,7 +101,7 @@ A few functions for scapy_extension require reading packet or extracting informa
 | bytearray_to_bytes | :white_check_mark: | |
 
 
-### ZigbeeCrypt 
+### ZigbeeCrypt
 `zigbee_crypt/zigbeecrypt.c`
 
 | funciton | test | notes |

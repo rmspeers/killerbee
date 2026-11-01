@@ -1,4 +1,4 @@
-from typing import Optional, Union, Tuple, Any, List
+from typing import Any, List, Optional, Tuple, Union
 
 DEFAULT_KB_CHANNEL: int = 11
 DEFAULT_KB_PAGE: Optional[int] = None
@@ -6,31 +6,34 @@ DEFAULT_KB_DEVICE: Optional[int] = None
 
 from scapy.config import conf  # type: ignore
 
-setattr(conf, "killerbee_channel", DEFAULT_KB_CHANNEL)
-setattr(conf, "killerbee_page", DEFAULT_KB_PAGE)
-setattr(conf, "killerbee_device", DEFAULT_KB_DEVICE)
-setattr(conf, "killerbee_nkey", None)
+conf.killerbee_channel = DEFAULT_KB_CHANNEL
+conf.killerbee_page = DEFAULT_KB_PAGE
+conf.killerbee_device = DEFAULT_KB_DEVICE
+conf.killerbee_nkey = None
+import logging
+import os
+import struct
+import time
+
 from scapy import plist  # type: ignore
+from scapy.all import (
+    Dot15d4,  # type: ignore
+    Dot15d4FCS,  # type: ignore
+    Packet,  # type: ignore
+    PcapWriter,  # type: ignore
+    ZigbeeAppDataPayload,  # type: ignore
+    ZigbeeNWK,  # type: ignore
+    ZigbeeNWKCommandPayload,  # type: ignore
+    ZigbeeSecurityHeader,  # type: ignore
+)
 from scapy.base_classes import SetGen  # type: ignore
 from scapy.packet import Gen, Raw  # type: ignore
-from scapy.all import Dot15d4  # type: ignore
-from scapy.all import Dot15d4FCS  # type: ignore
-from scapy.all import PcapWriter  # type: ignore
-from scapy.all import ZigbeeSecurityHeader  # type: ignore
-from scapy.all import ZigbeeNWK  # type: ignore
-from scapy.all import ZigbeeAppDataPayload  # type: ignore
-from scapy.all import ZigbeeNWKCommandPayload  # type: ignore
-from scapy.all import Packet  # type: ignore
 
 # This line will allow KillerBee's pcap reader to overwrite scapy's reader that is imported on the
 # above line, per suggestion from cutaway at https://code.google.com/p/killerbee/issues/detail?id=28:
-
 from killerbee import *
 
-import os, time, struct
 from .kbutils import randmac
-
-import logging
 
 log_killerbee = logging.getLogger("scapy.killerbee")
 
@@ -103,14 +106,14 @@ def __kb_recv(
     stop_filter: Optional[Any] = None,
     verbose: Optional[int] = None,
     timeout: Optional[int] = None,
-) -> List[bytes]:
+) -> list[bytes]:
     kb.sniffer_on()
     if timeout is not None:
         stoptime = time.time() + timeout
     if verbose is None:
         verbose = conf.verb
 
-    lst: List[Any] = []
+    lst: list[Any] = []
     packetcount: int = 0
     remain: Optional[float] = None
     while 1:
@@ -187,7 +190,7 @@ def kbsendp(
         kb = iface
 
     # Make sure the packet has 2 bytes for FCS before TX
-    if not Dot15d4FCS in pkt:
+    if Dot15d4FCS not in pkt:
         pkt /= Raw(b"\x00\x00")
 
     pkts_out: int = __kb_send(
@@ -247,7 +250,7 @@ def kbsrp(
         kb = iface
 
     # Make sure the packet has an FCS layer before TX
-    if not Dot15d4FCS in pkt:
+    if Dot15d4FCS not in pkt:
         pkt /= Raw(b"\x00\x00")
 
     pkts_out: int = __kb_send(
@@ -256,7 +259,7 @@ def kbsrp(
     if verbose:
         print("\nSent %i packets." % pkts_out)
 
-    pkts_in: List[bytes] = __kb_recv(
+    pkts_in: list[bytes] = __kb_recv(
         kb, count=count, store=store, prn=prn, lfilter=lfilter, verbose=verbose, timeout=timeout
     )
     if verbose:
@@ -366,7 +369,7 @@ def kbrdpcap(
     @return: Scapy packetlist of Dot15d4 packets parsed from the given PCAP file.
     """
     cap: PcapReader = PcapReader(filename)
-    lst: List[bytes] = []
+    lst: list[bytes] = []
     packetcount: int = 0
     if count > 0:
         count += skip
@@ -374,7 +377,7 @@ def kbrdpcap(
     while 1:
         packet: bytes = cap.pnext()
         packetcount += 1
-        if packet[1] == None:
+        if packet[1] is None:
             break
         if skip > 0 and packetcount <= skip:
             continue
@@ -390,7 +393,7 @@ def kbrdpcap(
 
 
 @conf.commands.register
-def kbwrpcap(save_file: str, pkts: List[bytes]) -> None:
+def kbwrpcap(save_file: str, pkts: list[bytes]) -> None:
     """
     Write a pcap using the KillerBee library.
     """
@@ -407,11 +410,11 @@ def kbrddain(filename: str, count: int = -1, skip: int = 0) -> plist.PacketList:
     Wraps the DainTreeReader to return scapy packet object from daintree files.
     """
     cap: DainTreeReader = DainTreeReader(filename)
-    lst: List[Any] = []
+    lst: list[Any] = []
     packetcount: int = 0
 
     while 1:
-        packet: Optional[List[Any]] = cap.pnext()
+        packet: Optional[list[Any]] = cap.pnext()
         if packet is None:
             break
         packetcount += 1
@@ -427,7 +430,7 @@ def kbrddain(filename: str, count: int = -1, skip: int = 0) -> plist.PacketList:
 
 
 @conf.commands.register
-def kbwrdain(save_file: str, pkts: List[Any]) -> None:
+def kbwrdain(save_file: str, pkts: list[Any]) -> None:
     """
     Write a daintree file using the KillerBee library.
     """
@@ -564,22 +567,22 @@ def kbdecrypt(
     key: Optional[Union[Dict[str, str], Any]] = None,
     verbose: Optional[int] = None,
     doMicCheck: bool = False,
-) -> Optional[Tuple[bytes, bool]]:
+) -> Optional[tuple[bytes, bool]]:
     """Decrypt Zigbee frames using AES CCM* with 32-bit MIC"""
     if verbose is None:
         verbose = conf.verb
     if key is None:
-        if conf.killerbee_nkey == None:
+        if conf.killerbee_nkey is None:
             log_killerbee.error("Cannot find decryption key. (Set conf.killerbee_nkey)")
             return None
         key = conf.killerbee_nkey
     if len(key) != 16:
         log_killerbee.error("Invalid decryption key, must be a 16 byte string.")
         return None
-    if not ZigbeeSecurityHeader in source_pkt:
+    if ZigbeeSecurityHeader not in source_pkt:
         log_killerbee.error("Cannot decrypt frame without a ZigbeeSecurityHeader.")
         return None
-    if not ZigbeeNWK in source_pkt:
+    if ZigbeeNWK not in source_pkt:
         log_killerbee.error("Cannot decrypt frame without a ZigbeeNWK.")
         return None
     try:
@@ -666,17 +669,17 @@ def kbencrypt(
     if verbose is None:
         verbose = conf.verb
     if key is None:
-        if conf.killerbee_nkey == None:
+        if conf.killerbee_nkey is None:
             log_killerbee.error("Cannot find decryption key. (Set conf.killerbee_nkey)")
             return None
         key = conf.killerbee_nkey
     if len(key) != 16:
         log_killerbee.error("Invalid encryption key, must be a 16 byte string.")
         return None
-    if not ZigbeeSecurityHeader in source_pkt:
+    if ZigbeeSecurityHeader not in source_pkt:
         log_killerbee.error("Cannot encrypt frame without a ZigbeeSecurityHeader.")
         return None
-    if not ZigbeeNWK in source_pkt:
+    if ZigbeeNWK not in source_pkt:
         log_killerbee.error("Cannot encrypt frame without a ZigbeeNWK.")
         return None
     try:
@@ -769,7 +772,7 @@ def kbgetmiclen(seclevel: int) -> int:
 
 
 @conf.commands.register
-def kbgetpanid(packet: Gen) -> Tuple[Optional[bytes], Optional[Any]]:
+def kbgetpanid(packet: Gen) -> tuple[Optional[bytes], Optional[Any]]:
     """Returns the pan id and which layer it was found in or None, None"""
     for layer in packet.layers():
         for field in packet[layer].fields:

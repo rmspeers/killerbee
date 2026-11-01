@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-import sys
 import os
 import signal
+import sys
 import time
+
 from killerbee import *
 
 
@@ -39,7 +40,7 @@ def watchforaresp(kb, timeout=1):
     start = time.time()
     while start + timeout > time.time():
         recvpkt = kb.pnext()
-        if recvpkt != None and recvpkt[1]:
+        if recvpkt is not None and recvpkt[1]:
             d154list = d154.pktchop(recvpkt[0])
 
             fcf = struct.unpack("<H", d154list[0])[0]
@@ -185,7 +186,7 @@ if __name__ == "__main__":
             sys.exit(-1)
 
         try:
-            if seq != None:
+            if seq is not None:
                 ackp[1] = seq
                 ackinj = "".join(ackp)
                 kb.inject(ackinj)

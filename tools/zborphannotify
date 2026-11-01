@@ -2,12 +2,11 @@
 
 # Contributed by Bryan Halfpap <Bryanhalf@gmail.com>, Copyright 2015
 
-import binascii
-import sys
 import argparse
-from time import sleep
-
+import binascii
 import logging
+import sys
+from time import sleep
 
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)  # suppress annoying Scapy IPv6 warning
 from killerbee import *
@@ -67,13 +66,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print(
-        (
-            "Expecting {2:#016x} to be the coordinator on network (PAN ID) {0:#04x}, located on channel {1}.".format(
-                args.panid, args.channel, args.coordinator
-            )
+        "Expecting {2:#016x} to be the coordinator on network (PAN ID) {0:#04x}, located on channel {1}.".format(
+            args.panid, args.channel, args.coordinator
         )
     )
-    print(("The device to disassociate is {0:#016x}.".format(args.device)))
+    print("The device to disassociate is {0:#016x}.".format(args.device))
     # print("The device to disassociate is {0:#016x} with short address {1:#04x}.".format(args.device, args.deviceshort))
     # TODO: seqnums for each direction
 

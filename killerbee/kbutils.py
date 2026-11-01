@@ -1,19 +1,18 @@
-from typing import Optional, Dict, Union, List, Tuple, Any
-
+import glob
+import inspect
+import os
+import random
+import struct
 import sys
+import time
+from struct import pack
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import serial  # type: ignore
 
 # Import USB support depending on version of pyUSB
 import usb.core  # type: ignore
 import usb.util  # type: ignore
-
-import serial  # type: ignore
-import os
-import struct
-import glob
-import time
-import random
-import inspect
-from struct import pack
 
 from .config import *  # to get DEV_ENABLE_* variables
 
@@ -33,14 +32,14 @@ BB_USB_PROD_ID: int = 0x16A8
 FTDI_X_USB_VEND_ID: int = 0x0403
 FTDI_X_USB_PROD_ID: int = 0x6015  # api-mote FTDI chip
 
-usbVendorList: List[int] = [
+usbVendorList: list[int] = [
     RZ_USB_VEND_ID,
     ZN_USB_VEND_ID,
     CC2530_USB_VEND_ID,
     CC2531_USB_VEND_ID,
     BB_USB_VEND_ID,
 ]
-usbProductList: List[int] = [
+usbProductList: list[int] = [
     RZ_USB_PROD_ID,
     ZN_USB_PROD_ID,
     CC2530_USB_PROD_ID,
@@ -74,7 +73,7 @@ class KBCapabilities:
     FREQ_915: int = 0x0E  #: Capabilities Flag: Can perform 915-917 MHz sniffing (ch 0-26)
 
     def __init__(self) -> None:
-        self._capabilities: Dict[int, bool] = {
+        self._capabilities: dict[int, bool] = {
             self.NONE: False,
             self.SNIFF: False,
             self.SETCHAN: False,
@@ -98,7 +97,7 @@ class KBCapabilities:
         else:
             return False
 
-    def getlist(self) -> Dict[int, bool]:
+    def getlist(self) -> dict[int, bool]:
         return self._capabilities
 
     def setcapab(self, capab: int, value: bool) -> None:
@@ -176,7 +175,7 @@ class KBCapabilities:
         return False
 
 
-class findFromList(object):
+class findFromList:
     """
     Custom matching function for pyUSB 1.x.
     Used by usb.core.find's custom_match parameter.
@@ -184,8 +183,8 @@ class findFromList(object):
 
     def __init__(self, vendors_, products_) -> None:
         """Takes a list of vendor IDs and product IDs."""
-        self._vendors: List[int] = vendors_
-        self._products: List[int] = products_
+        self._vendors: list[int] = vendors_
+        self._products: list[int] = products_
 
     def __call__(self, device: Any) -> bool:
         """
@@ -208,8 +207,8 @@ class findFromListAndBusDevId(findFromList):
         self,
         busNum_: Optional[int],
         devNum_: Optional[int],
-        vendors_: List[int],
-        products_: List[int],
+        vendors_: list[int],
+        products_: list[int],
     ) -> None:
         """Takes a list of vendor IDs and product IDs."""
         findFromList.__init__(self, vendors_, products_)
@@ -231,11 +230,11 @@ class findFromListAndBusDevId(findFromList):
         return False
 
 
-def devlist_usb_v1x(vendor: Optional[Any] = None, product: Optional[Any] = None) -> List[Any]:
+def devlist_usb_v1x(vendor: Optional[Any] = None, product: Optional[Any] = None) -> list[Any]:
     """
     Private function. Do not call from tools/scripts/etc.
     """
-    devlist: List[Any] = []
+    devlist: list[Any] = []
     if vendor is None:
         vendor = usbVendorList
     else:
@@ -280,17 +279,17 @@ def isIpAddr(ip: str) -> bool:
         except AttributeError:  # no inet_pton here, sorry
             try:
                 socket.inet_aton(address)
-            except socket.error:
+            except OSError:
                 return False
             return address.count(".") == 3
-        except socket.error:
+        except OSError:
             return False
         return True
 
     def is_valid_ipv6_address(address: str) -> bool:
         try:
             socket.inet_pton(socket.AF_INET6, address)
-        except socket.error:
+        except OSError:
             return False
         return True
 
@@ -302,7 +301,7 @@ def devlist(
     product: Optional[Any] = None,
     gps: Optional[str] = None,
     include: Optional[str] = None,
-) -> List[Any]:
+) -> list[Any]:
     """
     Return device information for all present devices,
     filtering if requested by vendor and/or product IDs on USB devices, and
@@ -324,7 +323,7 @@ def devlist(
     if gps is not None and gps_devstring is None:
         gps_devstring = gps
 
-    devlist: List[Any] = devlist_usb_v1x(vendor, product)
+    devlist: list[Any] = devlist_usb_v1x(vendor, product)
 
     for serialdev in get_serial_ports(include=include):
         if serialdev == gps_devstring:
@@ -375,7 +374,7 @@ def devlist(
     return devlist
 
 
-def get_serial_devs(seriallist: List[str]) -> None:
+def get_serial_devs(seriallist: list[str]) -> None:
     global DEV_ENABLE_FREAKDUINO, DEV_ENABLE_ZIGDUINO
     # TODO Continue moving code from line 163:181 here, yielding results
 
@@ -406,7 +405,7 @@ def get_serial_ports(include: Optional[Any] = None) -> Any:
     return seriallist
 
 
-def isgoodfetccspi(serialdev: str) -> Tuple[bool, Optional[int]]:
+def isgoodfetccspi(serialdev: str) -> tuple[bool, Optional[int]]:
     """
     Determine if a given serial device is running the GoodFET firmware with the CCSPI application.
     This should either be a TelosB/Tmote Sky GOODFET or an Api-Mote design.
@@ -641,7 +640,7 @@ def randmac(length: int = 8) -> bytes:
     @returns: A randomized MAC address in a little-endian byte string.
     """
     # Valid OUI prefixes for MAC addresses
-    prefixes: List[bytes] = [
+    prefixes: list[bytes] = [
         b"\x00\x0d\x6f",  # Ember
         b"\x00\x12\x4b",  # TI
         b"\x00\x04\xa3",  # Microchip
@@ -695,5 +694,5 @@ class KBInterfaceError(KBException):
     pass
 
 
-def bytearray_to_bytes(b: List[bytes]) -> bytes:
+def bytearray_to_bytes(b: list[bytes]) -> bytes:
     return b"".join(struct.pack("B", value) for value in b)

@@ -75,4 +75,4 @@ or `disconnect` (when you're done using the sniffer) are supported.""",
     elif args.command == "disconnect":
         disconnect(args.iface, args.hostip, args.snifferip)
     else:
-        print("Unsupported command {1}.".format(args.command))
+        print("Unsupported command {0}.".format(args.command))

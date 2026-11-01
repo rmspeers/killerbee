@@ -1,24 +1,24 @@
-from typing import Optional, Any, Dict, Union, List
-
+from typing import Any, Dict, List, Optional, Union
 from warnings import warn
 
-from .pcapdump import *
-from .daintree import *
-from .pcapdlt import *
-
 from . import kbutils
-from .kbutils import devlist
-from .kbutils import isIpAddr
-from .kbutils import search_usb
-from .kbutils import isSerialDeviceString
-from .kbutils import issl_nodetest
-from .kbutils import issl_beehive
-from .kbutils import iszigduino
-from .kbutils import isfreakduino
-from .kbutils import *
-from .zigbeedecode import *  # would like to import only within killerbee class
-from .dot154decode import *  # would like to import only within killerbee class
 from .config import *  # to get DEV_ENABLE_* variables
+from .daintree import *
+from .dot154decode import *  # would like to import only within killerbee class
+from .kbutils import *
+from .kbutils import (
+    devlist,
+    isfreakduino,
+    isIpAddr,
+    isSerialDeviceString,
+    issl_beehive,
+    issl_nodetest,
+    iszigduino,
+    search_usb,
+)
+from .pcapdlt import *
+from .pcapdump import *
+from .zigbeedecode import *  # would like to import only within killerbee class
 
 
 # Utility Functions
@@ -26,7 +26,7 @@ def show_dev(
     vendor: Optional[Any] = None,
     product: Optional[Any] = None,
     gps: Optional[str] = None,
-    include: Optional[List[str]] = None,
+    include: Optional[list[str]] = None,
 ) -> None:
     """
     A basic function to output the device listing.
@@ -37,10 +37,10 @@ def show_dev(
         these to be enumerated. Aka, include only these items.
     """
     fmt: str = "{: >14} {: <30} {: >10}"
-    print((fmt.format("Dev", "Product String", "Serial Number")))
+    print(fmt.format("Dev", "Product String", "Serial Number"))
     for dev in devlist(vendor=vendor, product=product, gps=gps, include=include):
         # Using None as a format value is an TypeError in python3
-        print((fmt.format(dev[0], dev[1], str(dev[2]))))
+        print(fmt.format(dev[0], dev[1], str(dev[2])))
 
 
 # KillerBee Class
@@ -233,7 +233,7 @@ class KillerBee:
 
                 self.dblog = dblog.DBLogger(datasource)
             except Exception as e:
-                warn("Error initializing DBLogger (%s)." % e)
+                warn("Error initializing DBLogger (%s)." % e, stacklevel=2)
                 datasource = None  # give up nicely if error connecting, etc.
 
     # Allow 'with KillerBee(...) as kb:' syntax
@@ -256,7 +256,7 @@ class KillerBee:
         else:
             return False
 
-    def get_dev_info(self) -> List[str]:
+    def get_dev_info(self) -> list[str]:
         """
         Returns device information in a list identifying the device. Implemented by the loaded driver.
         @rtype: List
@@ -317,7 +317,7 @@ class KillerBee:
 
         return self.driver.capabilities.frequency(channel, page)
 
-    def get_capabilities(self) -> List[Any]:
+    def get_capabilities(self) -> list[Any]:
         """
         Returns a list of capability information for the device.
         @rtype:  List
@@ -340,7 +340,7 @@ class KillerBee:
 
         return self.driver.enter_bootloader()
 
-    def get_bootloader_version(self) -> List[int]:
+    def get_bootloader_version(self) -> list[int]:
         """
         Gets the bootloader major and minor version.
         @rtype:  List
@@ -352,7 +352,7 @@ class KillerBee:
 
         return self.driver.get_bootloader_version()
 
-    def get_bootloader_signature(self) -> List[int]:
+    def get_bootloader_signature(self) -> list[int]:
         """
         Gets the bootloader chip signature.
         @rtype:  List
@@ -480,7 +480,7 @@ class KillerBee:
 
         return self.driver.inject(packet, channel, count, delay, page)
 
-    def pnext(self, timeout: int = 100) -> Optional[Dict[Union[int, str], Any]]:
+    def pnext(self, timeout: int = 100) -> Optional[dict[Union[int, str], Any]]:
         """
         Returns packet data as a dictionary, else None.
         @type timeout: Integer

@@ -1,6 +1,7 @@
 #!/usr/bin/env
-from killerbee import *
 import sys
+
+from killerbee import *
 
 print("QuahogCon Badge Pwn (qbp) - jwright@willhackforsushi.com")
 

@@ -4,9 +4,11 @@ Author: Adam Laurie <adam@algroup.co.uk> aka RFIDiot
 
 """
 
-import serial  # type: ignore
 import time  # type: ignore
 from datetime import datetime  # type: ignore
+
+import serial  # type: ignore
+
 from .kbutils import KBCapabilities, makeFCS  # type: ignore
 
 MODE_NONE = 0x01
@@ -85,11 +87,11 @@ class SL_NODETEST:
         self.handle.flush()
         # time.sleep(1.5) #this delay seems crucial
 
-        if arg != None:
+        if arg is not None:
             cmdstr += " " + arg
         self.handle.write(cmdstr.encode())
         if send_return:
-            self.handle.write("\r".encode())
+            self.handle.write(b"\r")
         if confirm:
             ret = False
             for x in range(10):

@@ -1,11 +1,11 @@
-import unittest
-import struct
 import argparse
 import os
-
-from killerbee.kbutils import *
+import struct
+import unittest
 
 import pytest
+
+from killerbee.kbutils import *
 
 
 @pytest.mark.usefixtures("apimote_env")
@@ -376,9 +376,10 @@ class TestKbutils(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Additional mock-driven tests (no hardware)
 # ---------------------------------------------------------------------------
-import killerbee.kbutils as kbu
 import serial as _serial
 import usb.core
+
+import killerbee.kbutils as kbu
 
 
 class ScriptSerial:

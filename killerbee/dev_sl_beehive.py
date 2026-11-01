@@ -4,10 +4,12 @@ Author: Adam Laurie <adam@algroup.co.uk> aka RFIDiot
 
 """
 
-import serial  # type: ignore
 import re  # type: ignore
 import time  # type: ignore
 from datetime import datetime  # type: ignore
+
+import serial  # type: ignore
+
 from .kbutils import KBCapabilities  # type: ignore
 
 MODE_NONE = 0x01

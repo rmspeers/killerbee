@@ -5,22 +5,21 @@
 #
 # This code is being rewritten and refactored.  You've been warned!
 
-from typing import Dict, Union, Optional, Any, List, Tuple
-
-import sys
-import time
-import importlib
-import string
-import io
-import struct
 import glob
+import importlib
+import io
 import os
 import sqlite3
+import string
+import struct
+import sys
+import time
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Maps a target name to the (sibling module, class) implementing its client.
 # Siblings are imported lazily and relatively, since this module lives inside
 # the killerbee package (py2-style implicit relative imports do not work).
-_CLIENTS: Dict[str, Tuple[str, str]] = {
+_CLIENTS: dict[str, tuple[str, str]] = {
     "cc": ("GoodFETCC", "GoodFETCC"),
     "cc51": ("GoodFETCC", "GoodFETCC"),
     "cc2420": ("GoodFETCCSPI", "GoodFETCCSPI"),
@@ -121,7 +120,7 @@ class GoodFET:
         if os.name == "nt" and sys.version.find("64 bit") != -1:
             print("WARNING: PySerial requires a 32-bit Python build in Windows.")
 
-        if port is None and os.environ.get("GOODFET") != None:
+        if port is None and os.environ.get("GOODFET") is not None:
             glob_list = glob.glob(os.environ.get("GOODFET"))
             if len(glob_list) > 0:
                 port = glob_list[0]
@@ -447,7 +446,7 @@ class GoodFET:
     # return ord(self.data[0]);
     def glitchVerb(self, app, verb, data):
         """Glitch during a transaction."""
-        if data == None:
+        if data is None:
             data = []
         self.data = [app & 0xFF, verb & 0xFF] + data
         self.writecmd(self.GLITCHAPP, 0x81, len(self.data), self.data)
@@ -463,7 +462,7 @@ class GoodFET:
 
     def glitchTime(self, app, verb, data):
         """Time the execution of a verb."""
-        if data == None:
+        if data is None:
             data = []
         self.data = [app & 0xFF, verb & 0xFF] + data
         print("Timing app %02x verb %02x." % (app, verb))

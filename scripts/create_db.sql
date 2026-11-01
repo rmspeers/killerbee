@@ -174,7 +174,7 @@ DROP VIEW IF EXISTS `ZigBeeSecurity`.`locationstatus` ;
 DROP TABLE IF EXISTS `ZigBeeSecurity`.`locationstatus`;
 USE `ZigBeeSecurity`;
 CREATE  OR REPLACE VIEW `ZigBeeSecurity`.`locationstatus` AS
-SELECT pkt_id, packets.loc_id, rssi, channel, longitude, latitude, elevation, 
+SELECT pkt_id, packets.loc_id, rssi, channel, longitude, latitude, elevation,
 	 fcf_frametype, source, dest, seqnum, cap_datetime
 FROM packets LEFT JOIN locations ON packets.loc_id = locations.loc_id
 ORDER BY cap_datetime DESC;

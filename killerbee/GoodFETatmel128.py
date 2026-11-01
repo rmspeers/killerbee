@@ -1,7 +1,13 @@
 # GoodFETclient to interface zigduino/atmel128 radio
 # forked by bx from code by neighbor Travis Goodspeed
+import array
+import binascii
+import glob
+import os
+import sys  # type: ignore
+import time
+
 from .GoodFETAVR import GoodFETAVR  # type: ignore # type: ignore
-import sys, binascii, os, array, time, glob  # type: ignore
 
 
 class GoodFETatmel128rfa1(GoodFETAVR):
@@ -12,14 +18,14 @@ class GoodFETatmel128rfa1(GoodFETAVR):
     enable_AACK = False
 
     def serInit(self, port=None, timeout=2, attemptlimit=None):
-        if port == None:
+        if port is None:
             port = os.environ.get("GOODFET")
         self.pyserInit(port, timeout, attemptlimit)
 
     def pyserInit(self, port, timeout, attemptlimit):
         """Open the serial port"""
         if self.connected == 0:
-            if (not (attemptlimit == None)) and (attemptlimit <= 1):
+            if (attemptlimit is not None) and (attemptlimit <= 1):
                 # it always takes at least 2 tries
                 attemptlimit = 2
 
@@ -29,7 +35,7 @@ class GoodFETatmel128rfa1(GoodFETAVR):
             if os.name == "nt" and sys.version.find("64 bit") != -1:
                 print("WARNING: PySerial requires a 32-bit Python build in Windows.")
 
-            if port is None and os.environ.get("GOODFET") != None:
+            if port is None and os.environ.get("GOODFET") is not None:
                 glob_list = glob.glob(os.environ.get("GOODFET"))
                 if len(glob_list) > 0:
                     port = glob_list[0]

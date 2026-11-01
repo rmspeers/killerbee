@@ -2,8 +2,8 @@
 
 from optparse import OptionParser
 
-from killerbee.scapy_extensions import *
 from killerbee.kbutils import *
+from killerbee.scapy_extensions import *
 from zigbee_crypt import *
 
 ZBEE_SEC_ENC_MIC_32 = 0x5  #: ZigBee Seecurity Level id 5; Encrypted, 4 byte MIC
@@ -25,7 +25,7 @@ def bytestohex(b, sep=":"):
     Convert bytes b to hex string using sep value as a delimiter.
     This is what Python 3.8 `hex(bytes_per_sep)` does
     """
-    assert type(b) == bytes
+    assert isinstance(b, bytes)
     bstr = b.hex()
     return sep.join([bstr[i : i + 2] for i in range(0, len(bstr), 2)])
 
@@ -75,14 +75,12 @@ def sniffAppDataKey(pkts, key, verbose):
         if p.haslayer("ZigbeeNWK"):
             nwk = p.getlayer("ZigbeeNWK")
             if nwk.source is not None and nwk.ext_src is not None:
-                if not nwk.source in addrMap and verbose:
+                if nwk.source not in addrMap and verbose:
                     print(
-                        (
-                            "[+] Extended Source: "
-                            + ":".join("{:02x}".format(ord(ch)) for ch in raw(nwk)[8:16])
-                            + " mapped to "
-                            + hex(nwk.source)
-                        )
+                        "[+] Extended Source: "
+                        + ":".join("{:02x}".format(ord(ch)) for ch in raw(nwk)[8:16])
+                        + " mapped to "
+                        + hex(nwk.source)
                     )
                 addrMap[nwk.source] = raw(nwk)[8:16]
             if p.haslayer("ZigbeeSecurityHeader") and p.haslayer("ZigbeeAppDataPayload"):

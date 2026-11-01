@@ -1,7 +1,7 @@
-import unittest
-import struct
 import argparse
 import os
+import struct
+import unittest
 
 import pytest
 

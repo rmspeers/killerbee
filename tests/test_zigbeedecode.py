@@ -3,17 +3,17 @@ import struct
 import pytest
 
 from killerbee.zigbeedecode import (
-    ZigBeeNWKPacketParser,
-    ZigBeeAPSPacketParser,
+    ZBEE_APS_FCF_ACK,
+    ZBEE_APS_FCF_CMD,
+    ZBEE_APS_FCF_DATA,
+    ZBEE_APS_FCF_EXT_HEADER,
+    ZBEE_NWK_FCF_CMD,
     ZBEE_NWK_FCF_EXT_DEST,
     ZBEE_NWK_FCF_EXT_SOURCE,
     ZBEE_NWK_FCF_MULTICAST,
     ZBEE_NWK_FCF_SOURCE_ROUTE,
-    ZBEE_NWK_FCF_CMD,
-    ZBEE_APS_FCF_DATA,
-    ZBEE_APS_FCF_CMD,
-    ZBEE_APS_FCF_ACK,
-    ZBEE_APS_FCF_EXT_HEADER,
+    ZigBeeAPSPacketParser,
+    ZigBeeNWKPacketParser,
 )
 
 

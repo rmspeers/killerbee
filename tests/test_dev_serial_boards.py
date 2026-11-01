@@ -1,7 +1,8 @@
 """Tests for dev_freakduino and dev_zigduino with scripted fake serial / GoodFET handles."""
 
 import struct
-from datetime import datetime, timezone, time as dttime
+from datetime import datetime, timezone
+from datetime import time as dttime
 
 import pytest
 

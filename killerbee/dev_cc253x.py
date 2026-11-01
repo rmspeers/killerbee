@@ -2,14 +2,15 @@
 CC253x support is contributed by Scytmo.
 """
 
-import sys  # type: ignore
 import struct  # type: ignore
+import sys  # type: ignore
 import time  # type: ignore
 from datetime import datetime  # type: ignore
-from .kbutils import KBCapabilities, makeFCS, bytearray_to_bytes  # type: ignore
 
 import usb.core  # type: ignore
 import usb.util  # type: ignore
+
+from .kbutils import KBCapabilities, bytearray_to_bytes, makeFCS  # type: ignore
 
 
 class CC253x:
@@ -105,7 +106,7 @@ class CC253x:
         """
         self.capabilities.require(KBCapabilities.SNIFF)
 
-        if channel != None:
+        if channel is not None:
             self.set_channel(channel, page)
 
         # Enable power in 802.15.4 radio

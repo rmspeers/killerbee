@@ -18,28 +18,28 @@ import pygtk
 pygtk.require("2.0")
 
 import argparse
-import sys
-import gobject
-import pango
-import gtk
-import math
-import time
-import random
-import os
-import threading
-from threading import Thread, Event
-from gtk import gdk
-import cairo
-import struct
-import socket
-import select
 import datetime
+import math
+import os
+import random
+import select
+import socket
+import struct
+import sys
+import threading
 import time
-import usb
 import traceback
-from killerbee import *
-
+from threading import Event, Thread
 from types import *
+
+import cairo
+import gobject
+import gtk
+import pango
+import usb
+from gtk import gdk
+
+from killerbee import *
 
 if gtk.pygtk_version < (2, 3, 93):
     print("PyGtk 2.3.93 or later required")
@@ -372,15 +372,15 @@ class PyGrapherWidget(gtk.Widget):
         self.samples.append(sample)
         self.samples = self.samples[(self.maxsamples * -1) :]
 
-        if self.minval == None:
+        if self.minval is None:
             self.minval = sample
-        if self.maxval == None:
+        if self.maxval is None:
             self.maxval = sample
 
         self.minval = int(min(self.minval, sample))
         self.maxval = int(max(self.maxval, sample))
 
-        if self.window != None:
+        if self.window is not None:
             x, y, w, h = self.allocation
             self.window.invalidate_rect((0, 0, w, h), False)
 
@@ -455,7 +455,7 @@ class PyGrapherWidget(gtk.Widget):
             cr.fill()
             cr.restore()
 
-        if self.minval == None or self.maxval == None:
+        if self.minval is None or self.maxval is None:
             return
 
         # Background - figure out the steps and labels
@@ -532,7 +532,7 @@ class PyGrapherWidget(gtk.Widget):
         cr.set_line_width(0.5)
         cr.set_source_rgb(self.linecolor[0], self.linecolor[1], self.linecolor[2])
         for i in range(len(self.samples) - 1):
-            if self.samples[i] == None or self.samples[i + 1] == None:
+            if self.samples[i] is None or self.samples[i + 1] is None:
                 continue
 
             px1 = (graphw / float(self.maxsamples)) * i
@@ -779,7 +779,7 @@ class ZBFindUI:
 
             self.updatelist = []
 
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
             sys.stderr.write("Could not open the window.  Check $DISPLAY.\n")
             sys.exit(-1)
@@ -829,7 +829,7 @@ class ZBFindUI:
 
         # Update the graph and speedo if the selected device has
         # gone inactive
-        if not self.target == None and not update_target:
+        if self.target is not None and not update_target:
             self.speedo.set_pointer(self.speedo.get_pointer())
             self.graph.add_sample(self.speedo.get_pointer())
 
@@ -872,7 +872,7 @@ class ZBFindUI:
             self.populate_details(self.details[self.dpan])
 
     def populate_details(self, tree, iter=None):
-        if tree == None:
+        if tree is None:
             return
 
         i = iter
@@ -945,7 +945,7 @@ class ZBPoller(Thread):
         # Updated to -51.7 dbM at 1M from RZUSBSTICK transmitter.
         refrssi = -51.7  # Measured RSSI 1M from transmitter
         # TODO only accurate for RZUSBSTICK device currently, update based on dev
-        return "%d'" % (pow(10, (refrssi - rssi) / float((10 * propconst))) * 3.28)
+        return "%d'" % (pow(10, (refrssi - rssi) / float(10 * propconst)) * 3.28)
 
     def sendbeacon(self):
 
@@ -994,7 +994,7 @@ class ZBPoller(Thread):
 
             try:
                 packetlist = self.kb.pnext()
-                if packetlist == None:
+                if packetlist is None:
                     thresh += 1
                 else:
                     thresh = 0
@@ -1005,7 +1005,7 @@ class ZBPoller(Thread):
                     self.kb.sniffer_on()
                     # TODO: Add debug message mode in case users want these otherwise-useless debug msgs
                     thresh = 0
-            except Exception as e:
+            except Exception:
                 traceback.print_exc()
                 continue
 
@@ -1021,7 +1021,7 @@ class ZBPoller(Thread):
             rssi = (3 * packetlist[2]) - 91
             try:
                 packet = d154.pktchop(packetlist[0])
-            except Exception as e:
+            except Exception:
                 traceback.print_exc()
                 print("bad packetchop!!")
                 continue
@@ -1176,7 +1176,7 @@ class ZBPoller(Thread):
         try:
             self.stopthread.set()
             sys.exit(0)
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
             sys.exit(1)
 
@@ -1204,5 +1204,5 @@ if __name__ == "__main__":
         zbpoll.stop()
         zbpoll.join()
 
-    except Exception as e:
+    except Exception:
         traceback.print_exc()

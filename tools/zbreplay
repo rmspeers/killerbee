@@ -5,10 +5,10 @@ zbreplay: replay ZigBee/802.15.4 network traffic from libpcap or Daintree files
 jwright@willhackforsushi.com
 """
 
+import argparse
+import signal
 import sys
 import time
-import signal
-import argparse
 
 from killerbee import *
 
@@ -20,7 +20,7 @@ def interrupt(signum, frame):
     kb.close()
     if cap:
         cap.close()
-    print(("{0} packets transmitted".format(packetcount)))
+    print("{0} packets transmitted".format(packetcount))
     sys.exit(0)
 
 
@@ -57,11 +57,11 @@ if args.showdev:
     show_dev()
     sys.exit(0)
 
-if args.channel == None:
+if args.channel is None:
     print("ERROR: Must specify a channel.", file=sys.stderr)
     sys.exit(1)
 
-if args.pcapfile == None and args.dsnafile == None:
+if args.pcapfile is None and args.dsnafile is None:
     print(
         "ERROR: Must specify a file with frames to replay using -r (libpcap) or -R (Daintree SNA)",
         file=sys.stderr,
@@ -86,10 +86,8 @@ if not kb.is_valid_channel(args.channel, args.subghz_page):
 kb.set_channel(args.channel, page=args.subghz_page)
 
 print(
-    (
-        "zbreplay: retransmitting frames from '{0}' on interface '{1}' with a delay of {2} seconds.".format(
-            savefile, kb.get_dev_info()[0], args.sleep
-        )
+    "zbreplay: retransmitting frames from '{0}' on interface '{1}' with a delay of {2} seconds.".format(
+        savefile, kb.get_dev_info()[0], args.sleep
     )
 )
 
@@ -107,4 +105,4 @@ while args.count != packetcount:
 kb.close()
 cap.close()
 
-print(("{0} packets transmitted".format(packetcount)))
+print("{0} packets transmitted".format(packetcount))

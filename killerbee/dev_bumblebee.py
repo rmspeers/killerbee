@@ -13,13 +13,14 @@ import struct  # type: ignore
 import time  # type: ignore
 from array import array  # type: ignore
 from datetime import datetime  # type: ignore
-from .kbutils import KBCapabilities, makeFCS, bytearray_to_bytes  # type: ignore
 
 import usb.core  # type: ignore
 import usb.util  # type: ignore
 
+from .kbutils import KBCapabilities, bytearray_to_bytes, makeFCS  # type: ignore
 
-class CommProtocolPacket(object):
+
+class CommProtocolPacket:
     """
     USB communication protocol packet, used to communicate with
     our CC2531 dongle.
@@ -42,7 +43,7 @@ class CommProtocolPacket(object):
         return self.__data
 
 
-class Bumblebee(object):
+class Bumblebee:
     """
     Bumblebee driver class.
     """
@@ -70,7 +71,7 @@ class Bumblebee(object):
         """
 
         self.dev = dev
-        self.rx_buffer = bytes()
+        self.rx_buffer = b""
         self.usb_rx_buffer = array("B", b"\x00" * 256)
         self._channel = None
         self.__stream_open = False
@@ -327,7 +328,7 @@ class Bumblebee(object):
         if len(packet) > 125:  # 127 - 2 to accommodate FCS
             raise Exception("Packet too long")
 
-        if channel != None:
+        if channel is not None:
             self.set_channel(channel, page)
 
         for pnum in range(0, count):

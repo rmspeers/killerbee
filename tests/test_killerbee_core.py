@@ -1,12 +1,12 @@
-import unittest
-import struct
 import argparse
 import os
+import struct
+import unittest
+
+import pytest
 
 from killerbee import *
 from killerbee.dev_apimote import APIMOTE
-
-import pytest
 
 
 @pytest.mark.usefixtures("apimote_env")
@@ -491,7 +491,6 @@ def test_datasource_dblog(monkeypatch, dbl):
 
 
 def test_datasource_dblog_error_is_warning(monkeypatch, dbl):
-
     def boom(ds):
         raise RuntimeError("no db")
 

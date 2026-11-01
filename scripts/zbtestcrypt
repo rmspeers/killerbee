@@ -6,14 +6,14 @@
 #  http://www.aperturelabs.com
 #
 
-import sys
 import argparse
-
-from scapy.all import *
-from killerbee import *
-from killerbee.scapy_extensions import *
+import sys
 
 from rangeparser import RangeParser
+from scapy.all import *
+
+from killerbee import *
+from killerbee.scapy_extensions import *
 
 # parser for packet ranges
 rangeparser = RangeParser()
@@ -25,11 +25,11 @@ def crypt(packet, data=None, encrypt=False):
     global nwk_key
 
     if packet[ZigbeeSecurityHeader].key_type == 0:
-        if link_key == None:
+        if link_key is None:
             return False, "FAILED: No LINK_KEY provided"
         key = link_key
     elif packet[ZigbeeSecurityHeader].key_type == 1:
-        if nwk_key == None:
+        if nwk_key is None:
             return False, "FAILED: No NWK_KEY provided"
         key = nwk_key
     else:
@@ -158,14 +158,14 @@ if __name__ == "__main__":
 
     print()
 
-    if args.pcapfile == None and args.dsnafile == None:
+    if args.pcapfile is None and args.dsnafile is None:
         print(
             "ERROR: Must specify a capture file using -r (libpcap) or -R (Daintree SNA)",
             file=sys.stderr,
         )
         exit(True)
 
-    if args.pcapfile != None and args.dsnafile != None:
+    if args.pcapfile is not None and args.dsnafile is not None:
         print("ERROR: Must specify only one of -r (libpcap) or -R (Daintree SNA)", file=sys.stderr)
         exit(True)
 
@@ -240,7 +240,7 @@ if __name__ == "__main__":
             continue
         if args.end and count > args.end:
             break
-        if packets and not count in packets:
+        if packets and count not in packets:
             continue
         print()
         print("Packet:", count)
@@ -286,7 +286,7 @@ if __name__ == "__main__":
                     )
 
         # ignore frames with no encrypted payload
-        if not ZigbeeNWK in packet or not ZigbeeSecurityHeader in packet:
+        if ZigbeeNWK not in packet or ZigbeeSecurityHeader not in packet:
             print("    no payload - skipping!")
             continue
 
@@ -294,7 +294,7 @@ if __name__ == "__main__":
             # capture extended source addresses for decryption
             # format is dict of Dot15d4Data.dest_panid with dict of source -> ext_source
             if ZigbeeSecurityHeader in packet and "ext_src" in packet[ZigbeeNWK].fields:
-                if not packet[Dot15d4Data].dest_panid in ext_adresses:
+                if packet[Dot15d4Data].dest_panid not in ext_adresses:
                     ext_adresses[packet[Dot15d4Data].dest_panid] = {}
                 # only set if ext_address is bigger (more extended) than one we've seen before
                 try:
@@ -311,7 +311,7 @@ if __name__ == "__main__":
                         packet[ZigbeeNWK].ext_src
                     )
             # only decrypt if APS layer is not already in the plain
-            if not ZigbeeAppDataPayload in packet and packet[ZigbeeSecurityHeader].data != "":
+            if ZigbeeAppDataPayload not in packet and packet[ZigbeeSecurityHeader].data != "":
                 print("   decrypting NWK...")
                 stat, decrypted = crypt(packet)
             else:

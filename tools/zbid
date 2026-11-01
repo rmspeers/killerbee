@@ -7,8 +7,8 @@ The -g flag may be provided to ignore a serial device, such as an attached GPS
 serial device which should be ignored by KillerBee.
 """
 
-import sys
 import argparse
+import sys
 
 from killerbee import show_dev
 

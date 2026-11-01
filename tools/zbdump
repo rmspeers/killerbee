@@ -7,14 +7,15 @@ Compatible with Wireshark 1.1.2 and later (jwright@willhackforsushi.com)
 The -p flag adds CACE PPI headers to the PCAP (ryan@rmspeers.com)
 """
 
-from typing import Optional, Any, List, Dict, Union
-
-import sys
-import signal
 import argparse
 import os
+import signal
+import sys
+from typing import Any, Dict, List, Optional, Union
+
 from scapy.all import Dot15d4FCS  # type: ignore
-from killerbee import KillerBee, PcapDumper, DainTreeDumper, DLT_IEEE802_15_4
+
+from killerbee import DLT_IEEE802_15_4, DainTreeDumper, KillerBee, PcapDumper
 from killerbee.scapy_extensions import kbgetpanid
 
 packetcount: int = 0
@@ -53,15 +54,13 @@ def dump_packets(args):
     rf_freq_mhz = kb.frequency(args.channel, args.subghz_page) / 1000.0
 
     print(
-        (
-            "zbdump: listening on '{0}', channel {1}, page {2} ({3} MHz), link-type DLT_IEEE802_15_4, capture size 127 bytes".format(
-                args.devstring, args.channel, args.subghz_page, rf_freq_mhz
-            )
+        "zbdump: listening on '{0}', channel {1}, page {2} ({3} MHz), link-type DLT_IEEE802_15_4, capture size 127 bytes".format(
+            args.devstring, args.channel, args.subghz_page, rf_freq_mhz
         )
     )
 
     while args.count != packetcount:
-        packet: Optional[Dict[Union[int, str], Any]] = kb.pnext()
+        packet: Optional[dict[Union[int, str], Any]] = kb.pnext()
 
         if packet is None:
             continue
@@ -168,7 +167,7 @@ def main():
     if args.verbose:
         unbuffered = os.fdopen(sys.stdout.fileno(), "w", 0)
 
-    if args.channel == None:
+    if args.channel is None:
         print("ERROR: Must specify a channel.", file=sys.stderr)
         sys.exit(1)
 
@@ -216,7 +215,7 @@ def main():
     if daintree_dumper is not None:
         daintree_dumper.close()
 
-    print(("{0} packets captured".format(packetcount)))
+    print("{0} packets captured".format(packetcount))
 
 
 if __name__ == "__main__":

@@ -2,17 +2,17 @@
 
 # Contributed by Bryan Halfpap <Bryanhalf@gmail.com>, Copyright 2015
 
-import struct
-import binascii
-import sys
 import argparse
+import binascii
+import logging
+import struct
+import sys
 from time import sleep
 
-import logging
-
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)  # suppress annoying Scapy IPv6 warning
-from killerbee import *
 from scapy.all import *
+
+from killerbee import *
 
 
 def create_coord_realign(panid, coordinator, device, newchannel, newpanid, seqnum):
@@ -112,10 +112,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print(
-        (
-            "Expecting {2:#016x} to be the coordinator on network (PAN ID) {0:#04x}, located on channel {1}.".format(
-                args.panid, args.channel, args.coordinator
-            )
+        "Expecting {2:#016x} to be the coordinator on network (PAN ID) {0:#04x}, located on channel {1}.".format(
+            args.panid, args.channel, args.coordinator
         )
     )
     # TODO: seqnums for each direction

@@ -7,7 +7,7 @@ $ pip3 install mypy
 $ mypy killerbee
 ```
 
-## Type Coverage 
+## Type Coverage
 
 ### KilleBbee Core
 
@@ -26,7 +26,7 @@ $ mypy killerbee
 | KillerBee.get_capabilities | :white_check_mark: | |
 | KillerBee.enter_bootloader | :white_check_mark: | |
 | KillerBee.get_bootloader_version | :white_check_mark: | |
-| KillerBee.get_bootloader_signature | :white_check_mark: | | 
+| KillerBee.get_bootloader_signature | :white_check_mark: | |
 | KillerBee.bootloader_sign_on | :white_check_mark: | |
 | KillerBee.bootloader_start_application | :white_check_mark: | |
 | KillerBee.channel (property) | :white_check_mark: | |
@@ -37,7 +37,7 @@ $ mypy killerbee
 | KillerBee.jammer_on | :white_check_mark: | |
 | KillerBee.jammer_off | :white_check_mark: | |
 
-### Apimote Driver 
+### Apimote Driver
 
 `killerbee/dev_apimote.py`
 

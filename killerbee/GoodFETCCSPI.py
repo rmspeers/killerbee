@@ -5,9 +5,14 @@
 #
 # This code is being rewritten and refactored.  You've been warned!
 
-from typing import Optional, Any
-
-import sys, time, string, io, struct, glob, os  # type: ignore
+import glob
+import io
+import os
+import string
+import struct
+import sys  # type: ignore
+import time
+from typing import Any, Optional
 
 from .GoodFET import GoodFET  # type: ignore
 from .kbutils import bytearray_to_bytes  # type: ignore

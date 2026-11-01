@@ -9,9 +9,9 @@ from datetime import datetime
 import pytest
 
 from killerbee import GoodFET as gf
+from killerbee import GoodFETatmel128 as atmod
 from killerbee import GoodFETAVR as avrmod
 from killerbee import GoodFETCCSPI as ccmod
-from killerbee import GoodFETatmel128 as atmod
 from killerbee import dev_apimote, dev_telosb, dev_template
 from killerbee.kbutils import KBCapabilities, makeFCS
 

@@ -1,7 +1,6 @@
-from typing import Optional, Any, List
-
 import binascii
 import time
+from typing import Any, List, Optional
 
 
 class DainTreeDumper:
@@ -110,7 +109,7 @@ class DainTreeReader:
         self._fh.close()
         self._fh = None
 
-    def pnext(self) -> List[Any]:
+    def pnext(self) -> list[Any]:
         """
         Retrieves the next packet from the capture file.  Returns a list of
         [Hdr, packet] where Hdr is a list of [timestamp, snaplen, plen] and
@@ -122,7 +121,7 @@ class DainTreeReader:
             raise Exception("File handle does not exist")
 
         while True:
-            record: List[bytes] = self._fh.readline().split(b" ")
+            record: list[bytes] = self._fh.readline().split(b" ")
             if not record[0].startswith(b"#"):
                 break
 

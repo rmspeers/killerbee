@@ -12,11 +12,12 @@ It was kept in the Api-Do repository but is now migrated
 to the KillerBee trunk. (jeff 2013)
 """
 
-import sys
 import argparse
+import sys
+
+from killerbee.openear import startCapture
 
 from killerbee import *
-from killerbee.openear import startCapture
 
 # Command line main function
 if __name__ == "__main__":

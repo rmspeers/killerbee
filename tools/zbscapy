@@ -12,9 +12,10 @@ from scapy.all import *
 # from killerbee import *
 from killerbee.scapy_extensions import *  # this is explicit because I didn't want to modify __init__.py
 
-del hexdump
-from scapy.utils import hexdump  # Force using Scapy's hexdump()
+del hexdump  # noqa: F821  (provided by the star import above)
 import os
+
+from scapy.utils import hexdump  # Force using Scapy's hexdump()
 
 if os.getuid():
     log_killerbee.warning("Most KillerBee functionality requires root privileges.")

@@ -7,9 +7,9 @@ Note: timestamps are not preserved in the conversion process. Sorry.
 (jwright@willhackforsushi.com)
 """
 
-import sys
-import os.path
 import argparse
+import os.path
+import sys
 
 from killerbee import *
 
@@ -56,4 +56,4 @@ while args.count != packetcount:
 
 incap.close()
 outcap.close()
-print(("Converted {0} packets.".format(packetcount)))
+print("Converted {0} packets.".format(packetcount))

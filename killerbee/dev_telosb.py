@@ -7,8 +7,9 @@ Utilizes the GoodFET firmware with CCSPI application, and the GoodFET client cod
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from .kbutils import KBCapabilities, makeFCS  # type: ignore
+
 from .GoodFETCCSPI import GoodFETCCSPI  # type: ignore
+from .kbutils import KBCapabilities, makeFCS  # type: ignore
 
 CC2420_REG_SYNC = 0x14
 

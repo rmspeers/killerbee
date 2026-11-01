@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-import sys
 import os
+import sys
+
 from killerbee import *
 
 """
@@ -42,7 +43,7 @@ while len(sys.argv) > 1:
         arg_count = int(sys.argv.pop(1))
 
 
-if arg_infile == None or arg_outfile == None:
+if arg_infile is None or arg_outfile is None:
     print("ERROR: Must specify an input file (-i) and an output file (-o).", file=sys.stderr)
     usage()
     sys.exit(1)
@@ -65,12 +66,12 @@ outcap = PcapDumper(DLT_IEEE802_15_4, arg_outfile)
 packetcount = 0
 while arg_count != packetcount:
     packet = incap.pnext()
-    if packet[1] == None:
+    if packet[1] is None:
         # End of capture
         break
 
     # print hexdump(packet[1])
-    if packet != None and packet[1]:
+    if packet is not None and packet[1]:
         packetcount += 1
         outcap.pcap_dump(packet[1][0:-1])
 

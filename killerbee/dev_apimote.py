@@ -12,13 +12,13 @@ TODO list (help is welcomed):
   - Platform recognition (ApiMote versons)
 """
 
-from typing import Optional, Dict, Union, Any, List
-
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from .kbutils import KBCapabilities, makeFCS
+from typing import Any, Dict, List, Optional, Union
+
 from .GoodFETCCSPI import GoodFETCCSPI
+from .kbutils import KBCapabilities, makeFCS
 
 CC2420_REG_SYNC: int = 0x14
 
@@ -53,7 +53,6 @@ class APIMOTE:
         self.__set_capabilities()
 
     def close(self) -> None:
-
         if self.handle is None:
             raise Exception("Handle does not exist")
 
@@ -63,7 +62,7 @@ class APIMOTE:
     def check_capability(self, capab: int) -> bool:
         return self.capabilities.check(capab)
 
-    def get_capabilities(self) -> Dict[int, bool]:
+    def get_capabilities(self) -> dict[int, bool]:
         return self.capabilities.getlist()
 
     def __set_capabilities(self) -> None:
@@ -82,7 +81,7 @@ class APIMOTE:
         return
 
     # KillerBee expects the driver to implement this function
-    def get_dev_info(self) -> List[Union[str, Any]]:
+    def get_dev_info(self) -> list[Union[str, Any]]:
         """
         Returns device information in a list identifying the device.
         @rtype: List
@@ -243,7 +242,7 @@ class APIMOTE:
             validcrc = True
         # Return in a nicer dictionary format, so we don't have to reference by number indicies.
         # Note that 0,1,2 indicies inserted twice for backwards compatibility.
-        result: Dict[Union[int, str], Any] = {
+        result: dict[Union[int, str], Any] = {
             0: frame,
             1: validcrc,
             2: rssi,

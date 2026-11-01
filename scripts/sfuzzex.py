@@ -9,8 +9,9 @@ import sys
 # TODO system path MUST be changed to your sully install path
 sys.path.append("/home/jwright/fuzzing/sulley")
 
-from killerbee import *
 from sulley import *
+
+from killerbee import *
 
 dstpan = "\xff\xff"
 dst = "\xff\xff"

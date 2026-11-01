@@ -195,7 +195,7 @@ def test_inject_and_jam(env):
     env.status_code = 500
     with pytest.raises(KBInterfaceError, match="start jamming"):
         d.jammer_on()
-    d.jammer_off.__func__  # exists
+    assert hasattr(d.jammer_off, "__func__")
     env.status_code = 200
     d.jammer_off()
 

@@ -4,12 +4,12 @@ import pytest
 from Crypto.Cipher import AES
 
 from killerbee.dot154decode import (
-    Dot154PacketParser,
-    UnsupportedPacket,
+    DOT154_FCF_INTRA_PAN,
+    DOT154_FCF_SEC_EN,
     BadKeyLength,
     BadPayloadLength,
-    DOT154_FCF_SEC_EN,
-    DOT154_FCF_INTRA_PAN,
+    Dot154PacketParser,
+    UnsupportedPacket,
 )
 
 KEY = bytes(range(16))

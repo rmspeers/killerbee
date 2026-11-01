@@ -4,11 +4,13 @@ Support from the Freakduino platform from Abika/Freaklabs.
 This is not a maintained platfrom and functionality may be broken or lacking.
 """
 
-import serial  # type: ignore
-import time
 import struct
-from datetime import datetime, date, timezone
+import time
+from datetime import date, datetime, timezone
 from datetime import time as dttime
+
+import serial  # type: ignore
+
 from .kbutils import KBCapabilities, makeFCS  # type: ignore
 
 MODE_NONE = 0x01

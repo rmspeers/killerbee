@@ -5,11 +5,11 @@ Transmit beacon request frames to the broadcast address while
 channel hopping to identify ZigBee Coordinator/Router devices.
 """
 
-import sys
+import argparse
 import os
 import signal
+import sys
 import time
-import argparse
 
 from killerbee import *
 
@@ -49,13 +49,13 @@ def display_details(routerdata):
         stackprofilestr = "Unknown (%d)" % stackprofile
 
     try:
-        print(("\tStack Version: {0}".format(stackver_map[stackver])))
+        print("\tStack Version: {0}".format(stackver_map[stackver]))
         stackverstr = stackver_map[stackprofile]
     except KeyError:
-        print(("\tStack Version: Unknown ({0})".format(stackver)))
+        print("\tStack Version: Unknown ({0})".format(stackver))
         stackverstr = "Unknown (%d)" % stackver
 
-    print(("\tChannel: {0}".format(channel)))
+    print("\tChannel: {0}".format(channel))
 
     if args.csvfile is not None:
         csvfile.write(
@@ -95,7 +95,7 @@ def response_handler(stumbled, packet, channel):
 
         key = b"".join([spanid, source])
         value = [spanid, source, extpanid, stackprofilever, channel]
-        if not key in stumbled:
+        if key not in stumbled:
             if args.verbose:
                 if assocPermit:
                     print("Beacon represents new network - ### Permitting new associations ###.")
@@ -124,7 +124,7 @@ def interrupt(signum, frame):
     if args.csvfile is not None:
         csvfile.close()
     kb.close()
-    print(("\n{0} packets transmitted, {1} responses.".format(txcount, rxcount)))
+    print("\n{0} packets transmitted, {1} responses.".format(txcount, rxcount))
     sys.exit(0)
 
 
@@ -148,7 +148,7 @@ if __name__ == "__main__":
         try:
             csvfile = open(args.csvfile, "w")
         except Exception as e:
-            print(("Issue opening CSV output file: {0}.".format(e)))
+            print("Issue opening CSV output file: {0}.".format(e))
         csvfile.write("panid,source,extpanid,stackprofile,stackversion,channel\n")
 
     # Beacon frame
@@ -164,9 +164,7 @@ if __name__ == "__main__":
         sys.exit(-1)
 
     signal.signal(signal.SIGINT, interrupt)
-    print(
-        ("zbstumbler: Transmitting and receiving on interface '{0}'".format(kb.get_dev_info()[0]))
-    )
+    print("zbstumbler: Transmitting and receiving on interface '{0}'".format(kb.get_dev_info()[0]))
 
     # Sequence number of beacon request frame
     seqnum = 0
@@ -186,7 +184,7 @@ if __name__ == "__main__":
 
         if not args.channel:
             if args.verbose:
-                print(("Setting channel to {0}.".format(channel)))
+                print("Setting channel to {0}.".format(channel))
             try:
                 kb.set_channel(channel)
             except Exception as e:

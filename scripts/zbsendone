@@ -3,8 +3,9 @@
 # Copyright (c) 2013, Gianfranco Costamagna <costamagnagianfranco@yahoo.it> <costamagna@ismb.it>
 # http://www.ismb.it/PerT
 
-import sys
 import signal
+import sys
+
 from killerbee import *
 from killerbee.scapy_extensions import *
 
@@ -98,7 +99,7 @@ while len(sys.argv) > 1:
         arg_packetcount = int(sys.argv.pop(1))
 
 kb = KillerBee(device=arg_devstring)
-if arg_channel == None:
+if arg_channel is None:
     print("ERROR: Must specify a channel with -f", file=sys.stderr)
     usage()
     sys.exit(1)

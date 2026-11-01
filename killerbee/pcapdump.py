@@ -259,7 +259,7 @@ class PcapDumper:
             ts_usec = int((now - ts_sec) * 1e6)
 
         plen = len(packet)
-        if orig_len == None:
+        if orig_len is None:
             orig_len = plen
 
         # Encapsulated packet header and packet
@@ -286,7 +286,7 @@ class PcapDumper:
         # Specially for handling FIFO needs:
         try:
             self.__fh.flush()
-        except IOError as e:
+        except OSError as e:
             raise e
 
     def close(self):

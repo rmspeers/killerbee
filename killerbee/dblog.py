@@ -1,5 +1,6 @@
-from .config import *  # type: ignore
 import MySQLdb  # type: ignore
+
+from .config import *  # type: ignore
 
 
 class DBReader:
@@ -10,12 +11,12 @@ class DBReader:
         self.db = MySQLdb.connect(
             user=DB_USER, passwd=DB_PASS, db=DB_NAME, host=DB_HOST, port=DB_PORT
         )
-        if self.db == None:
+        if self.db is None:
             raise Exception("DBLogger: Unable to connect to database.")
         self.conn = self.db.cursor()
 
     def close(self):
-        if self.conn != None:
+        if self.conn is not None:
             self.conn.close()
             self.conn = None
 
@@ -31,7 +32,7 @@ class DBReader:
         self.conn.execute(sql)
         if self.conn.rowcount >= 1:
             row = self.conn.fetchone()
-            while row != None:
+            while row is not None:
                 yield row
                 row = self.conn.fetchone()
         else:
@@ -42,7 +43,7 @@ class DBLogger:
     def __init__(self, datasource=None, channel=None, page=0):
         self.conn = None
 
-        if datasource == None:  # datasource must be provided if DBLogger is desired
+        if datasource is None:  # datasource must be provided if DBLogger is desired
             return
 
         self.db = None
@@ -59,7 +60,7 @@ class DBLogger:
                 "DBLogger was unable to connect to the database: "
                 "%s (Note: connection values should be in config.py)." % e
             )
-        if self.db == None:  # this backup check may be redundant
+        if self.db is None:  # this backup check may be redundant
             raise Exception("DBLogger: Unable to connect to database.")
         self.conn = self.db.cursor()
 
@@ -73,7 +74,7 @@ class DBLogger:
             print("No datasource found matching name:", datasource)
 
     def close(self):
-        if self.conn != None:
+        if self.conn is not None:
             self.conn.close()
             self.conn = None
 
@@ -92,25 +93,25 @@ class DBLogger:
         channel=None,
         page=0,
     ):
-        if self.conn == None:
+        if self.conn is None:
             raise Exception("DBLogger requires active connection status.")
         if full is None:
             full = {}
         # Use values in 'full' parameter to provide data for undefined other parameters
-        if bytes == None and "bytes" in full:
+        if bytes is None and "bytes" in full:
             bytes = full["bytes"]
-        if rssi == None and "rssi" in full:
+        if rssi is None and "rssi" in full:
             rssi = full["rssi"]
-        if datetime == None and "datetime" in full:
+        if datetime is None and "datetime" in full:
             datetime = full["datetime"]
-        if location == None and "location" in full:
+        if location is None and "location" in full:
             location = full["location"]
 
         # Get the location ID, or create one, if GPS data is available
         loc_id = self.add_location(location) if location is not None else None
 
         # Dissect the packet's bytes, using the Scapy'd version in parameter scapy if provided
-        if scapy == None:
+        if scapy is None:
             # Import Scapy extensions
             import logging  # type: ignore
 
@@ -144,21 +145,21 @@ class DBLogger:
         sql = []
         sql.append("ds_id=%d" % self.ds_id)
         sql.append("db_datetime=NOW()")
-        if datetime != None:
+        if datetime is not None:
             sql.append("cap_datetime='%s'" % str(datetime))
-        if self.channel != None:
+        if self.channel is not None:
             sql.append("channel=%d" % self.channel)
         if self.page:
             sql.append("page=%d" % self.page)
-        if srcdevid != None:
+        if srcdevid is not None:
             sql.append("source=%d" % srcdevid)
-        if destdevid != None:
+        if destdevid is not None:
             sql.append("dest=%d" % destdevid)
-        if rssi != None:
+        if rssi is not None:
             sql.append("rssi=%d" % rssi)
-        if loc_id != None:
+        if loc_id is not None:
             sql.append("loc_id=%d" % loc_id)
-        if channel != None:
+        if channel is not None:
             sql.append("channel=%d" % channel)  # TODO: bug? why is this in here twice?
         if page:
             sql.append("page=%d" % page)  # TODO: bug?
@@ -175,27 +176,27 @@ class DBLogger:
         return self.insert(" ".join(["INSERT INTO packets SET", ", ".join(sql)]), packetbytes=bytes)
 
     def add_location(self, location):
-        if self.conn == None:
+        if self.conn is None:
             raise Exception("DBLogger requires active connection status.")
         (lon, lat, alt) = location
         self.conn.execute(
             "SELECT loc_id FROM locations WHERE %s AND %s AND %s LIMIT 1"
             % (
-                ("longitude = '%f'" % lon) if lon != None else "longitude IS NULL",
-                ("latitude = '%f'" % lat) if lat != None else "latitude IS NULL",
-                ("elevation = '%f'" % alt) if alt != None else "elevation IS NULL",
+                ("longitude = '%f'" % lon) if lon is not None else "longitude IS NULL",
+                ("latitude = '%f'" % lat) if lat is not None else "latitude IS NULL",
+                ("elevation = '%f'" % alt) if alt is not None else "elevation IS NULL",
             )
         )
         res = self.conn.fetchone()
-        if res != None:
+        if res is not None:
             return res[0]  # location already in db, return loc_id
         else:
             self.conn.execute(
                 "INSERT INTO locations SET %s, %s, %s"
                 % (
-                    ("longitude = '%f'" % lon) if lon != None else "longitude = NULL",
-                    ("latitude = '%f'" % lat) if lat != None else "latitude = NULL",
-                    ("elevation = '%f'" % alt) if alt != None else "elevation = NULL",
+                    ("longitude = '%f'" % lon) if lon is not None else "longitude = NULL",
+                    ("latitude = '%f'" % lat) if lat is not None else "latitude = NULL",
+                    ("elevation = '%f'" % alt) if alt is not None else "elevation = NULL",
                 )
             )
             if self.conn.rowcount != 1:
@@ -204,26 +205,28 @@ class DBLogger:
             return self.conn.lastrowid
 
     def add_device(self, shortaddr, panid):
-        if self.conn == None:
+        if self.conn is None:
             raise Exception("DBLogger requires active connection status.")
         self.conn.execute(
             "SELECT dev_id FROM devices WHERE %s AND %s LIMIT 1"
             % (
-                ("short_addr = '%04x'" % shortaddr) if shortaddr != None else "short_addr IS NULL",
-                ("pan_id = '%04x'" % panid) if panid != None else "pan_id IS NULL",
+                ("short_addr = '%04x'" % shortaddr)
+                if shortaddr is not None
+                else "short_addr IS NULL",
+                ("pan_id = '%04x'" % panid) if panid is not None else "pan_id IS NULL",
             )
         )
         res = self.conn.fetchone()
-        if res != None:
+        if res is not None:
             return res[0]  # device already exists
         else:
             self.conn.execute(
                 "INSERT INTO devices SET %s, %s"
                 % (
                     ("short_addr = '%04x'" % shortaddr)
-                    if shortaddr != None
+                    if shortaddr is not None
                     else "short_addr = NULL",
-                    ("pan_id = '%04x'" % panid) if panid != None else "pan_id = NULL",
+                    ("pan_id = '%04x'" % panid) if panid is not None else "pan_id = NULL",
                 )
             )
             if self.conn.rowcount != 1:
@@ -233,7 +236,7 @@ class DBLogger:
 
     def insert(self, sql, packetbytes=None):
         params = None
-        if packetbytes != None:
+        if packetbytes is not None:
             sql = sql + ", packetbytes=%s"
             params = (MySQLdb.Binary(packetbytes),)
         self.conn.execute(sql, params)

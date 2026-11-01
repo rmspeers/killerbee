@@ -4,11 +4,11 @@
 # Adam Laurie / rfidiot, 2018
 # adam@algroup.co.uk
 
-from __future__ import print_function
 
 import sys
-from killerbee import *
 from time import sleep
+
+from killerbee import *
 
 
 def test_functions():

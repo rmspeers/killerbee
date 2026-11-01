@@ -2,15 +2,14 @@
 
 # Contributed by Bryan Halfpap <Bryanhalf@gmail.com>, Copyright 2015
 
-from __future__ import print_function
 
 # TODO: Reduce the usage of globals
+import argparse
+import logging
 import signal
 import sys
-import argparse
 import threading
 from threading import Event
-import logging
 from time import sleep
 
 from killerbee import *
@@ -53,14 +52,14 @@ def get_spanids():
             print("Warning: Issue recieving packet.")
             pass  # TODO: Should this be continue instead?
         # Check for empty packet (timeout) and valid FCS
-        if recvpkt != None and recvpkt["validcrc"]:
+        if recvpkt is not None and recvpkt["validcrc"]:
             restart_threshold = 0
             try:
                 canidate = struct.unpack("H", recvpkt["bytes"][3:5])[0]
             except:
                 print(recvpkt["bytes"][3:5])
                 pass
-            if canidate != None and canidate != spanid:
+            if canidate is not None and canidate != spanid:
                 # OK we got a packet, lets go back up and send out a beacon$
                 print("Got beacon from {0}".format(hex(spanid)))
                 spanid = canidate
