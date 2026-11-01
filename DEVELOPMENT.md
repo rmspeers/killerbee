@@ -57,3 +57,7 @@ pre-commit run --all-files   # check everything manually
 ```
 
 The ruff rules and ignores live in `pyproject.toml`. Run the tests with `pip install -e '.[test]' && pytest`; they use mocked hardware unless `APIMOTE_DEVSTRING` is set.
+
+## GitHub Actions
+
+`.github/workflows/tests.yml` runs linting and the test suite across several Python versions. It is manual only: start it from the Actions tab with "Run workflow" (you can choose the Python versions and minimum coverage).
