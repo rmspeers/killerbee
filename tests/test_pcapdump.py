@@ -45,6 +45,7 @@ def test_dump_orig_len_roundtrip(tmp_path):
 
 def test_dump_default_timestamp_is_now(tmp_path):
     import time
+
     f = tmp_path / "now.pcap"
     before = time.time()
     with PcapDumper(195, str(f)) as d:
@@ -59,7 +60,7 @@ def test_dump_default_timestamp_and_context_manager(tmp_path):
         d.pcap_dump(FRAME)
     data = f.read_bytes()
     assert len(data) == 24 + 16 + len(FRAME)
-    assert struct.unpack("I", data[:4])[0] == 0xa1b2c3d4
+    assert struct.unpack("I", data[:4])[0] == 0xA1B2C3D4
 
 
 def test_dump_to_file_like():
@@ -78,6 +79,7 @@ def test_dump_flush_error():
     class Bad(io.BytesIO):
         def flush(self):
             raise IOError("boom")
+
     d = PcapDumper(195, Bad())
     with pytest.raises(IOError):
         d.pcap_dump(FRAME, ts_sec=1, ts_usec=2)
@@ -111,8 +113,11 @@ def test_ppi_bad_location(tmp_path, loc):
 
 def test_reader_big_endian_file(tmp_path):
     f = tmp_path / "be.pcap"
-    f.write_bytes(struct.pack(">IHHiIII", 0xa1b2c3d4, 2, 4, 0, 0, 65535, 195)
-                  + struct.pack(">IIII", 5, 250000, 3, 3) + b"abc")
+    f.write_bytes(
+        struct.pack(">IHHiIII", 0xA1B2C3D4, 2, 4, 0, 0, 65535, 195)
+        + struct.pack(">IIII", 5, 250000, 3, 3)
+        + b"abc"
+    )
     r = PcapReader(str(f))
     assert r.datalink() == 195
     hdr, frame = r.pnext()
@@ -120,12 +125,15 @@ def test_reader_big_endian_file(tmp_path):
     r.close()
 
 
-@pytest.mark.parametrize("content", [
-    struct.pack("<IHHiIII", 0xdeadbeef, 2, 4, 0, 0, 65535, 195),   # not a pcap magic
-    struct.pack("<IHHiIII", 0xa1b2c3d4, 3, 0, 0, 0, 65535, 195),   # unsupported version
-    struct.pack("<I", 0xa1b2c3d4),                                  # truncated header
-    b"",
-])
+@pytest.mark.parametrize(
+    "content",
+    [
+        struct.pack("<IHHiIII", 0xDEADBEEF, 2, 4, 0, 0, 65535, 195),  # not a pcap magic
+        struct.pack("<IHHiIII", 0xA1B2C3D4, 3, 0, 0, 0, 65535, 195),  # unsupported version
+        struct.pack("<I", 0xA1B2C3D4),  # truncated header
+        b"",
+    ],
+)
 def test_reader_rejects_bad_header(tmp_path, content):
     f = tmp_path / "bad.pcap"
     f.write_bytes(content)
@@ -135,8 +143,11 @@ def test_reader_rejects_bad_header(tmp_path, content):
 
 def test_reader_oversized_record(tmp_path):
     f = tmp_path / "c.pcap"
-    f.write_bytes(struct.pack("<IHHIIII", 0xa1b2c3d4, 2, 4, 0, 0, 65535, 195)
-                  + struct.pack("<IIII", 1, 1, 10, 5) + b"12345")
+    f.write_bytes(
+        struct.pack("<IHHIIII", 0xA1B2C3D4, 2, 4, 0, 0, 65535, 195)
+        + struct.pack("<IIII", 1, 1, 10, 5)
+        + b"12345"
+    )
     r = PcapReader(str(f))
     with pytest.raises(Exception):
         r.pnext()

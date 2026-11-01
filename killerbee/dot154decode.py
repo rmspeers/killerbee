@@ -4,39 +4,40 @@ from Crypto.Cipher import AES  # type: ignore
 
 ## Constants for packet decoding fields
 # Frame Control Field
-DOT154_FCF_TYPE_MASK            = 0x0007  #: Frame type mask
-DOT154_FCF_SEC_EN               = 0x0008  #: Set for encrypted payload
-DOT154_FCF_FRAME_PND            = 0x0010  #: Frame pending
-DOT154_FCF_ACK_REQ              = 0x0020  #: ACK request
-DOT154_FCF_INTRA_PAN            = 0x0040  #: Intra-PAN activity
-DOT154_FCF_DADDR_MASK           = 0x0C00  #: Destination addressing mode mask
-DOT154_FCF_VERSION_MASK         = 0x3000  #: Frame version
-DOT154_FCF_SADDR_MASK           = 0xC000  #: Source addressing mask mode
+DOT154_FCF_TYPE_MASK = 0x0007  #: Frame type mask
+DOT154_FCF_SEC_EN = 0x0008  #: Set for encrypted payload
+DOT154_FCF_FRAME_PND = 0x0010  #: Frame pending
+DOT154_FCF_ACK_REQ = 0x0020  #: ACK request
+DOT154_FCF_INTRA_PAN = 0x0040  #: Intra-PAN activity
+DOT154_FCF_DADDR_MASK = 0x0C00  #: Destination addressing mode mask
+DOT154_FCF_VERSION_MASK = 0x3000  #: Frame version
+DOT154_FCF_SADDR_MASK = 0xC000  #: Source addressing mask mode
 
 # Frame Control Field Bit Shifts
-DOT154_FCF_TYPE_MASK_SHIFT      = 0  #: Frame type mask mode shift
-DOT154_FCF_DADDR_MASK_SHIFT     = 10  #: Destination addressing mode mask
-DOT154_FCF_VERSION_MASK_SHIFT   = 12  #: Frame versions mask mode shift
-DOT154_FCF_SADDR_MASK_SHIFT     = 14  #: Source addressing mask mode shift
+DOT154_FCF_TYPE_MASK_SHIFT = 0  #: Frame type mask mode shift
+DOT154_FCF_DADDR_MASK_SHIFT = 10  #: Destination addressing mode mask
+DOT154_FCF_VERSION_MASK_SHIFT = 12  #: Frame versions mask mode shift
+DOT154_FCF_SADDR_MASK_SHIFT = 14  #: Source addressing mask mode shift
 
 # Address Mode Definitions
-DOT154_FCF_ADDR_NONE            = 0x0000  #: Not sure when this is used
-DOT154_FCF_ADDR_SHORT           = 0x0002  #: 4-byte addressing
-DOT154_FCF_ADDR_EXT             = 0x0003  #: 8-byte addressing
+DOT154_FCF_ADDR_NONE = 0x0000  #: Not sure when this is used
+DOT154_FCF_ADDR_SHORT = 0x0002  #: 4-byte addressing
+DOT154_FCF_ADDR_EXT = 0x0003  #: 8-byte addressing
 
-DOT154_FCF_TYPE_BEACON          = 0     #: Beacon frame
-DOT154_FCF_TYPE_DATA            = 1     #: Data frame
-DOT154_FCF_TYPE_ACK             = 2     #: Acknowledgement frame
-DOT154_FCF_TYPE_MACCMD          = 3     #: MAC Command frame
+DOT154_FCF_TYPE_BEACON = 0  #: Beacon frame
+DOT154_FCF_TYPE_DATA = 1  #: Data frame
+DOT154_FCF_TYPE_ACK = 2  #: Acknowledgement frame
+DOT154_FCF_TYPE_MACCMD = 3  #: MAC Command frame
 
-DOT154_CRYPT_NONE               = 0x00    #: No encryption, no MIC
-DOT154_CRYPT_MIC32              = 0x01    #: No encryption, 32-bit MIC
-DOT154_CRYPT_MIC64              = 0x02    #: No encryption, 64-bit MIC
-DOT154_CRYPT_MIC128             = 0x03    #: No encryption, 128-bit MIC
-DOT154_CRYPT_ENC                = 0x04    #: Encryption, no MIC
-DOT154_CRYPT_ENC_MIC32          = 0x05    #: Encryption, 32-bit MIC
-DOT154_CRYPT_ENC_MIC64          = 0x06    #: Encryption, 64-bit MIC
-DOT154_CRYPT_ENC_MIC128         = 0x07    #: Encryption, 128-bit MIC
+DOT154_CRYPT_NONE = 0x00  #: No encryption, no MIC
+DOT154_CRYPT_MIC32 = 0x01  #: No encryption, 32-bit MIC
+DOT154_CRYPT_MIC64 = 0x02  #: No encryption, 64-bit MIC
+DOT154_CRYPT_MIC128 = 0x03  #: No encryption, 128-bit MIC
+DOT154_CRYPT_ENC = 0x04  #: Encryption, no MIC
+DOT154_CRYPT_ENC_MIC32 = 0x05  #: Encryption, 32-bit MIC
+DOT154_CRYPT_ENC_MIC64 = 0x06  #: Encryption, 64-bit MIC
+DOT154_CRYPT_ENC_MIC128 = 0x07  #: Encryption, 128-bit MIC
+
 
 class Dot154PacketParser:
     def __init__(self):
@@ -64,9 +65,7 @@ class Dot154PacketParser:
         encpayload = packet[-self.payloadlen(packet) :]
 
         if encpayload[0] != DOT154_CRYPT_ENC_MIC64:
-            raise UnsupportedPacket(
-                "Unsupported security level in packet: 0x%02x." % encpayload[0]
-            )
+            raise UnsupportedPacket("Unsupported security level in packet: 0x%02x." % encpayload[0])
 
         if len(key) != 16:
             raise BadKeyLength("Invalid key length (%d)." % len(key))
@@ -74,9 +73,7 @@ class Dot154PacketParser:
         # Encrypted content is:
         # Sec Level | 4-byte counter | Flags | Ciphertext | Encrypted 8-byte MIC
         if self.payloadlen(packet) < 15:
-            raise BadPayloadLength(
-                "Payload length too short (%d)." % self.payloadlen(packet)
-            )
+            raise BadPayloadLength("Payload length too short (%d)." % self.payloadlen(packet))
 
         nonce = self.nonce(packet)
         if not nonce:
@@ -94,8 +91,7 @@ class Dot154PacketParser:
         a = packet[0 : hdrlen + 6]
 
         # CCM* with a 13-byte nonce (L=2) and an 8-byte MIC
-        crypt = AES.new(key, AES.MODE_CCM, nonce=nonce, mac_len=8,
-                        assoc_len=len(a), msg_len=len(C))
+        crypt = AES.new(key, AES.MODE_CCM, nonce=nonce, mac_len=8, assoc_len=len(a), msg_len=len(C))
         crypt.update(a)
         try:
             return crypt.decrypt_and_verify(C, U)
@@ -137,7 +133,6 @@ class Dot154PacketParser:
 
         # Check if we are dealing with a beacon frame
         if (fcf & DOT154_FCF_TYPE_MASK) == DOT154_FCF_TYPE_BEACON:
-
             beacondata = [b""] * 10
 
             # 802.15.4 fields, SPAN and SA
@@ -147,15 +142,17 @@ class Dot154PacketParser:
 
             # Slicing never raises, so a truncated beacon simply yields
             # shorter (or empty) trailing fields.
-            for idx, size in ((0, 2),   # Superframe specification
-                              (1, 1),   # GTS data
-                              (2, 1),   # Pending address count
-                              (3, 1),   # Protocol ID
-                              (4, 1),   # Stack Profile version
-                              (5, 1),   # Capability information
-                              (6, 8),   # Extended PAN ID
-                              (7, 3),   # TX Offset
-                              (8, 1)):  # Update ID
+            for idx, size in (
+                (0, 2),  # Superframe specification
+                (1, 1),  # GTS data
+                (2, 1),  # Pending address count
+                (3, 1),  # Protocol ID
+                (4, 1),  # Stack Profile version
+                (5, 1),  # Capability information
+                (6, 8),  # Extended PAN ID
+                (7, 3),  # TX Offset
+                (8, 1),
+            ):  # Update ID
                 beacondata[idx] = packet[offset : offset + size]
                 offset += size
 
@@ -278,11 +275,14 @@ class Dot154PacketParser:
 
         return noncep1 + noncep2 + noncep3
 
+
 class UnsupportedPacket(Exception):
-  pass
+    pass
+
 
 class BadKeyLength(Exception):
-  pass
+    pass
+
 
 class BadPayloadLength(Exception):
-  pass
+    pass

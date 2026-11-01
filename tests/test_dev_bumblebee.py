@@ -23,7 +23,7 @@ class FakeDev:
     iProduct = 1
 
     def __init__(self):
-        self.inq = []      # chunks returned by read
+        self.inq = []  # chunks returned by read
         self.written = []
         self.auto_ack = True
 
@@ -42,7 +42,7 @@ class FakeDev:
         c = self.inq.pop(0)
         if isinstance(c, Exception):
             raise c
-        buf[:len(c)] = type(buf)("B", c)
+        buf[: len(c)] = type(buf)("B", c)
         return len(c)
 
 
@@ -111,7 +111,8 @@ def test_send_message_multiblock_and_ack_timeout(monkeypatch):
 def test_process_packet_badcrc_and_process_rx_errors():
     d, dev = mk()
     good = msg(Bumblebee.CMD_GOT_PKT, b"zz")
-    bad = bytearray(msg(5, b"q")); bad[-1] ^= 1
+    bad = bytearray(msg(5, b"q"))
+    bad[-1] ^= 1
     d.rx_buffer = bytes(bad) + good
     pk = list(d.process_packet())
     assert len(pk) == 1 and pk[0].get_data() == b"zz"

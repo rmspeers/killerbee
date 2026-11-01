@@ -8,6 +8,7 @@ from killerbee.dev_apimote import APIMOTE
 
 import pytest
 
+
 @pytest.mark.usefixtures("apimote_env")
 class TestKillerbeeCore(unittest.TestCase):
     def test_show_dev(self):
@@ -15,15 +16,15 @@ class TestKillerbeeCore(unittest.TestCase):
         self.assertTrue(True)
 
     def test_killerbee_init(self):
-        devstring=os.environ['APIMOTE_DEVSTRING']
+        devstring = os.environ["APIMOTE_DEVSTRING"]
 
-        #TODO datastore, gps, dblog
-  
-        #TODO usbserial throws exception
+        # TODO datastore, gps, dblog
+
+        # TODO usbserial throws exception
         kb = KillerBee()
         self.assertRaises(Exception, KillerBee, "/dev/null")
-        
-        #APIMOTE only
+
+        # APIMOTE only
         kb = KillerBee(devstring)
         self.assertIsNotNone(kb.driver)
         self.assertIsNotNone(kb.driver.handle)
@@ -33,24 +34,24 @@ class TestKillerbeeCore(unittest.TestCase):
         kb.close()
 
     def test_killerbee_close(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
         self.assertIsNotNone(kb.driver.handle)
         kb.close()
         self.assertIsNone(kb.driver.handle)
 
     def test_killerbee_get_dev_info(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
         info = kb.get_dev_info()
 
-        self.assertEqual(os.environ['APIMOTE_DEVSTRING'], info[0])
+        self.assertEqual(os.environ["APIMOTE_DEVSTRING"], info[0])
         self.assertEqual("GoodFET Apimote v2", info[1])
         self.assertEqual("", info[2])
-     
+
         kb.close()
-     
+
     def test_killerbee_check_capability(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
         self.assertTrue(kb.check_capability(KBCapabilities.FREQ_2400))
         self.assertTrue(kb.check_capability(KBCapabilities.SNIFF))
@@ -71,7 +72,7 @@ class TestKillerbeeCore(unittest.TestCase):
         kb.close()
 
     def test_killerbee_is_valid_channel(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
         self.assertFalse(kb.is_valid_channel(27, 28))
         self.assertFalse(kb.is_valid_channel(26, 28))
@@ -93,7 +94,7 @@ class TestKillerbeeCore(unittest.TestCase):
         kb.close()
 
     def test_killerbee_frequency(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
         self.assertEqual(0, kb.frequency(11, 1))
         self.assertEqual(0, kb.frequency(1))
@@ -103,15 +104,15 @@ class TestKillerbeeCore(unittest.TestCase):
         self.assertEqual(2480000, kb.frequency(26))
         self.assertEqual(2480000, kb.frequency(26, 0))
 
-        #TODO frequency handles none-case
-        #self.assertEqual(0, kb.frequency())
+        # TODO frequency handles none-case
+        # self.assertEqual(0, kb.frequency())
 
         kb.close()
 
     def test_killerbee_get_capabilities(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
         capabilities = kb.get_capabilities()
-    
+
         self.assertTrue(capabilities[KBCapabilities.SNIFF])
         self.assertTrue(capabilities[KBCapabilities.SETCHAN])
         self.assertTrue(capabilities[KBCapabilities.INJECT])
@@ -129,42 +130,42 @@ class TestKillerbeeCore(unittest.TestCase):
         self.assertFalse(capabilities[KBCapabilities.BOOT])
 
     def test_killerbee_enter_bootloader(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
         self.assertRaises(AttributeError, kb.enter_bootloader)
-  
+
         kb.close()
 
     def test_killerbee_get_bootloader_version(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
         self.assertRaises(AttributeError, kb.get_bootloader_version)
-  
+
         kb.close()
 
     def test_killerbee_get_bootloader_signature(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
         self.assertRaises(AttributeError, kb.get_bootloader_signature)
-  
+
         kb.close()
 
-    def test_killerbee_bootloader_sign_on(self): 
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+    def test_killerbee_bootloader_sign_on(self):
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
         self.assertRaises(AttributeError, kb.bootloader_sign_on)
-  
+
         kb.close()
 
-    def test_killerbee_bootloader_start_application(self): 
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+    def test_killerbee_bootloader_start_application(self):
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
         self.assertRaises(AttributeError, kb.bootloader_start_application)
-  
+
         kb.close()
 
     def test_killerbee_sniffer_on_off(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
         kb.sniffer_on()
 
         kb.sniffer_off()
@@ -174,7 +175,7 @@ class TestKillerbeeCore(unittest.TestCase):
         self.assertTrue(True)
 
     def test_killerbee_channel(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
         self.assertEqual(None, kb.channel)
 
@@ -183,20 +184,20 @@ class TestKillerbeeCore(unittest.TestCase):
         self.assertEqual(15, kb.channel)
 
         kb.close()
-        
+
     def test_killerbee_page(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
         self.assertEqual(0, kb.page)
 
-        #kb.set_channel(15, 5)
+        # kb.set_channel(15, 5)
 
-        #self.assertEqual(5, kb.page)
-        
-        kb.close() 
+        # self.assertEqual(5, kb.page)
+
+        kb.close()
 
     def test_killerbee_set_channel(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
         self.assertEqual(None, kb.channel)
 
@@ -209,47 +210,46 @@ class TestKillerbeeCore(unittest.TestCase):
         kb.close()
 
     def test_killerbee_inject(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
-        self.assertRaises(Exception, kb.inject, b'')
+        self.assertRaises(Exception, kb.inject, b"")
 
-        packet = struct.pack("<126s", (b'\x01'*126))
+        packet = struct.pack("<126s", (b"\x01" * 126))
         self.assertRaises(Exception, kb.inject, packet)
 
-        packet = struct.pack("<100s", (b'\x01'*100))
+        packet = struct.pack("<100s", (b"\x01" * 100))
         kb.inject(packet)
 
         kb.close()
 
     def test_killerbee_pnext(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
         fake = None
-        if os.environ['APIMOTE_DEVSTRING'] == '/dev/ttyFAKE0':
+        if os.environ["APIMOTE_DEVSTRING"] == "/dev/ttyFAKE0":
             from conftest import FakeGoodFETSerial
+
             fake = FakeGoodFETSerial.last
-            fake.queue_packet(bytes([3]) + b'\x01\x02\x03')
+            fake.queue_packet(bytes([3]) + b"\x01\x02\x03")
 
         kb.set_channel(25)
         result = kb.pnext(timeout=1)
 
         if fake is not None:
-            self.assertEqual(result['bytes'], b'\x01\x02\x03')
-  
+            self.assertEqual(result["bytes"], b"\x01\x02\x03")
+
         kb.close()
 
     def test_killerbee_jammer_on_off(self):
-        kb = KillerBee(os.environ['APIMOTE_DEVSTRING'])
+        kb = KillerBee(os.environ["APIMOTE_DEVSTRING"])
 
-        #kb.jammer_on(None, 'reflexive')
-        #kb.jammer_on(None, 'constant')
-        #kb.jammer_on(11, 'constant')
-        self.assertRaises(Exception, kb.jammer_on, None, 0, 'none')
+        # kb.jammer_on(None, 'reflexive')
+        # kb.jammer_on(None, 'constant')
+        # kb.jammer_on(11, 'constant')
+        self.assertRaises(Exception, kb.jammer_on, None, 0, "none")
         self.assertRaises(Exception, kb.jammer_off)
 
         kb.close()
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +265,7 @@ from killerbee import kbutils
 
 class DummyDriver:
     """Stands in for every dev_* driver class."""
+
     VARIANT_CC2530 = 1
     VARIANT_CC2531 = 2
 
@@ -288,6 +289,7 @@ class DummyDriver:
 
 def _patch_driver(monkeypatch, module, cls):
     import importlib
+
     m = importlib.import_module("killerbee." + module)
     monkeypatch.setattr(m, cls, DummyDriver)
 
@@ -365,6 +367,7 @@ def test_usb_not_found(monkeypatch):
 
 def test_ip_device(monkeypatch):
     import killerbee.dev_sewio as ds
+
     monkeypatch.setattr(kbmod, "search_usb", lambda d: None)
     monkeypatch.setattr(ds, "isSewio", lambda ip: True)
     monkeypatch.setattr(ds, "SEWIO", DummyDriver)
@@ -374,6 +377,7 @@ def test_ip_device(monkeypatch):
 
 def test_ip_device_not_sewio(monkeypatch):
     import killerbee.dev_sewio as ds
+
     monkeypatch.setattr(kbmod, "search_usb", lambda d: None)
     monkeypatch.setattr(ds, "isSewio", lambda ip: False)
     with pytest.raises(KBInterfaceError, match="cannot find device"):
@@ -398,8 +402,10 @@ def test_serial_probe_selection(monkeypatch, flag, probe, module, cls):
     assert isinstance(kb.driver, DummyDriver)
 
 
-@pytest.mark.parametrize("result,module,cls", [((True, 0), "dev_telosb", "TELOSB"),
-                                               ((True, 2), "dev_apimote", "APIMOTE")])
+@pytest.mark.parametrize(
+    "result,module,cls",
+    [((True, 0), "dev_telosb", "TELOSB"), ((True, 2), "dev_apimote", "APIMOTE")],
+)
 def test_serial_goodfet_selection(monkeypatch, result, module, cls):
     monkeypatch.setattr(kbmod, "search_usb", lambda d: None)
     monkeypatch.setattr(kbmod, "isgoodfetccspi", lambda d: result)
@@ -451,6 +457,7 @@ def dbl(monkeypatch):
     monkeypatch.setitem(sys.modules, "MySQLdb", mock.MagicMock())
     had = "killerbee.dblog" in sys.modules
     import killerbee.dblog as mod
+
     yield mod
     if not had:
         sys.modules.pop("killerbee.dblog", None)
@@ -472,6 +479,7 @@ def test_datasource_dblog(monkeypatch, dbl):
 
         def close(self):
             self.closed = True
+
     monkeypatch.setattr(dbl, "DBLogger", FakeDB)
     _patch_driver(monkeypatch, "dev_apimote", "APIMOTE")
     kb = KillerBee("d", hardware="apimote", datasource="unit")
@@ -486,6 +494,7 @@ def test_datasource_dblog_error_is_warning(monkeypatch, dbl):
 
     def boom(ds):
         raise RuntimeError("no db")
+
     monkeypatch.setattr(dbl, "DBLogger", boom)
     _patch_driver(monkeypatch, "dev_apimote", "APIMOTE")
     with pytest.warns(UserWarning, match="DBLogger"):
@@ -518,11 +527,28 @@ def test_no_driver_errors(monkeypatch):
     _patch_driver(monkeypatch, "dev_apimote", "APIMOTE")
     kb = KillerBee("d", hardware="apimote")
     kb.driver = None
-    for call in (kb.get_dev_info, kb.close, lambda: kb.check_capability(1), lambda: kb.is_valid_channel(11),
-                 kb.frequency, kb.get_capabilities, kb.enter_bootloader, kb.get_bootloader_version,
-                 kb.get_bootloader_signature, kb.bootloader_sign_on, kb.bootloader_start_application,
-                 kb.sniffer_on, kb.sniffer_off, lambda: kb.channel, lambda: kb.page,
-                 lambda: kb.set_channel(11), lambda: kb.inject(b"x"), kb.pnext, kb.jammer_on, kb.jammer_off):
+    for call in (
+        kb.get_dev_info,
+        kb.close,
+        lambda: kb.check_capability(1),
+        lambda: kb.is_valid_channel(11),
+        kb.frequency,
+        kb.get_capabilities,
+        kb.enter_bootloader,
+        kb.get_bootloader_version,
+        kb.get_bootloader_signature,
+        kb.bootloader_sign_on,
+        kb.bootloader_start_application,
+        kb.sniffer_on,
+        kb.sniffer_off,
+        lambda: kb.channel,
+        lambda: kb.page,
+        lambda: kb.set_channel(11),
+        lambda: kb.inject(b"x"),
+        kb.pnext,
+        kb.jammer_on,
+        kb.jammer_off,
+    ):
         with pytest.raises(KBInterfaceError):
             call()
 

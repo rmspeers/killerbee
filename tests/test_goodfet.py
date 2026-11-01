@@ -1,4 +1,5 @@
 """Tests for killerbee.GoodFET (client library) using a scripted fake serial port."""
+
 import struct
 import sys
 import types
@@ -22,6 +23,7 @@ class FakeSerial:
     * ``mute``     number of initial read() calls that return b"" (timeouts).
     * ``fill``     if set, read(n) returns that byte repeated once rx is empty.
     """
+
     PARITY_NONE = "N"
 
     def __init__(self, *args, **kwargs):
@@ -59,8 +61,8 @@ class FakeSerial:
             if len(self.pending) < 4 + ln:
                 break
             app, verb = self.pending[0], self.pending[1]
-            payload = bytes(self.pending[4:4 + ln])
-            del self.pending[:4 + ln]
+            payload = bytes(self.pending[4 : 4 + ln])
+            del self.pending[: 4 + ln]
             self.frames.append((app, verb, payload))
             if self.responder:
                 self.rx += self.responder(app, verb, payload) or b""
@@ -124,8 +126,14 @@ def fet():
 def test_getclient_branches(monkeypatch):
     # Sibling modules are imported relatively (killerbee.GoodFETxx); stub the
     # ones that do not exist in the package.
-    for mod in ("GoodFETCC", "GoodFETAVR", "GoodFETSPI", "GoodFETMSP430",
-                "GoodFETNRF", "GoodFETCCSPI"):
+    for mod in (
+        "GoodFETCC",
+        "GoodFETAVR",
+        "GoodFETSPI",
+        "GoodFETMSP430",
+        "GoodFETNRF",
+        "GoodFETCCSPI",
+    ):
         m = types.ModuleType("killerbee." + mod)
         setattr(m, mod, lambda mod=mod: "inst-" + mod)
         monkeypatch.setitem(sys.modules, "killerbee." + mod, m)
@@ -145,6 +153,7 @@ def test_getclient_branches(monkeypatch):
 
 def test_getclient_real_imports():
     from killerbee import GoodFETAVR, GoodFETCCSPI
+
     assert isinstance(gf.getClient("GoodFET"), gf.GoodFET)
     assert isinstance(gf.getClient("avr"), GoodFETAVR.GoodFETAVR)
     assert isinstance(gf.getClient("ccspi"), GoodFETCCSPI.GoodFETCCSPI)
@@ -175,6 +184,7 @@ def test_misc_simple(fet, capsys, monkeypatch):
 @pytest.fixture
 def patch_serial(monkeypatch):
     import serial
+
     made = []
 
     def factory(*a, **k):
@@ -183,6 +193,7 @@ def patch_serial(monkeypatch):
         s.responder = None
         made.append(s)
         return s
+
     monkeypatch.setattr(serial, "Serial", factory, raising=True)
     return made
 
@@ -218,6 +229,7 @@ def test_pyserinit_env_port_glob_match(patch_serial, monkeypatch):
 
 def test_symbol_table_db_error(monkeypatch):
     import sqlite3
+
     monkeypatch.setattr(gf.SymbolTable, "db", sqlite3.connect(":memory:"))
     assert gf.SymbolTable.__new__(gf.SymbolTable).get("7*6") == 42
 
@@ -234,6 +246,7 @@ def test_pyserinit_env_port_no_glob_match(patch_serial, monkeypatch):
 def test_pyserinit_autodiscovery(patch_serial, monkeypatch, hit):
     def fake_glob(p):
         return ["/dev/found"] if p == hit else []
+
     monkeypatch.setattr(gf.glob, "glob", fake_glob)
     f = gf.GoodFET()
     f.pyserInit(None, 2, None)
@@ -248,6 +261,7 @@ def test_pyserinit_windows(patch_serial, monkeypatch, capsys):
     class Scan:
         def comports(self):
             return [(1, "COM3", "x", "FTDI123"), (2, "COM4", "y", "OTHER"), (3, "COM5", "z", 5)]
+
     m = types.ModuleType("scanwin32")
     m.winScan = Scan
     monkeypatch.setitem(sys.modules, "scanwin32", m)
@@ -284,8 +298,11 @@ def test_pyserinit_board_resets(patch_serial, monkeypatch, board):
 
 def test_pyserinit_attemptlimit(monkeypatch, capsys):
     import serial
+
     made = []
-    monkeypatch.setattr(serial, "Serial", lambda *a, **k: made.append(FakeSerial(*a, **k)) or made[-1])
+    monkeypatch.setattr(
+        serial, "Serial", lambda *a, **k: made.append(FakeSerial(*a, **k)) or made[-1]
+    )
     f = gf.GoodFET()
     f.pyserInit("/dev/x", 2, 3)  # never connects; returns after limit
     assert f.connected == 0
@@ -295,6 +312,7 @@ def test_pyserinit_attemptlimit(monkeypatch, capsys):
 
 def test_pyserinit_many_attempts_return(monkeypatch, capsys):
     import serial
+
     monkeypatch.setattr(serial, "Serial", FakeSerial)
     f = gf.GoodFET()
     f.pyserInit("/dev/x", 2, 112)
@@ -306,6 +324,7 @@ def test_pyserinit_many_attempts_return(monkeypatch, capsys):
 
 def _slow_connect_serial(monkeypatch, mute_reads, echo=True):
     import serial
+
     made = []
 
     def factory(*a, **k):
@@ -313,15 +332,18 @@ def _slow_connect_serial(monkeypatch, mute_reads, echo=True):
         s.mute = mute_reads
         s.rx += BANNER
         if echo:
+
             def responder(app, verb, payload):
                 if (app, verb) == (0, 0x81):
                     return frame(0, 0x81, payload)
-                if (app, verb) == (0, 0x02):   # monitor peek8
+                if (app, verb) == (0, 0x02):  # monitor peek8
                     return frame(0, 0x02, b"\x12")
                 return frame(app, verb, b"")
+
             s.responder = responder
         made.append(s)
         return s
+
     monkeypatch.setattr(serial, "Serial", factory)
     return made
 
@@ -409,7 +431,7 @@ def test_readcmd_debug_frames(fet, capsys):
     s.rx += frame(0xFF, 0xFE, struct.pack("<H", 0x1234))
     s.rx += frame(0xFF, 0xFD, b"")
     s.rx += frame(0xFF, 0x01, b"")
-    s.rx += frame(0x00, 0x00) [:2] + bytes([0x00, 0x00, 0x00]) + b""  # app 0, verb 0 then 0x00 skip
+    s.rx += frame(0x00, 0x00)[:2] + bytes([0x00, 0x00, 0x00]) + b""  # app 0, verb 0 then 0x00 skip
     s.rx += bytes([0x05, 0x00, 0x00])  # real verb 5, count 0 (after skip)
     out = fet.readcmd()
     text = capsys.readouterr().out
@@ -420,11 +442,14 @@ def test_readcmd_debug_frames(fet, capsys):
 
 def test_writecmd_no_data_is_zero_padded(fet):
     fet.besilent = 1
-    fet.writecmd(0x40, 0x05, 3)             # data omitted
-    fet.writecmd(0x40, 0x06, 4, b"\x01")    # data too short
+    fet.writecmd(0x40, 0x05, 3)  # data omitted
+    fet.writecmd(0x40, 0x06, 4, b"\x01")  # data too short
     fet.writecmd(0x40, 0x07, 1, b"\x09\x08")  # data truncated to count
     assert fet.serialport.frames == [
-        (0x40, 0x05, b"\0\0\0"), (0x40, 0x06, b"\x01\0\0\0"), (0x40, 0x07, b"\x09")]
+        (0x40, 0x05, b"\0\0\0"),
+        (0x40, 0x06, b"\x01\0\0\0"),
+        (0x40, 0x07, b"\x09"),
+    ]
 
 
 def test_readcmd_debug_3byte_and_partial_header(fet, capsys):
@@ -433,7 +458,7 @@ def test_readcmd_debug_3byte_and_partial_header(fet, capsys):
     assert fet.readcmd() == bytearray(b"ok")
     assert "0x30201" in capsys.readouterr().out
     fet.connected = 0
-    s.rx += bytes([0x10, 0x01, 0x05])      # truncated count field: timeout
+    s.rx += bytes([0x10, 0x01, 0x05])  # truncated count field: timeout
     assert fet.readcmd() == bytearray(b"ok")
 
 
@@ -553,7 +578,7 @@ def test_secrets_and_stubs(fet, capsys):
     fet.status()
     fet.halt()
     fet.resume()
-    assert fet.getpc() == 0xdead
+    assert fet.getpc() == 0xDEAD
     fet.flash("x")
     fet.dump("x")
     assert fet.loadsymbols() is None
@@ -604,7 +629,7 @@ def test_monitor_info_and_clock_arduino(fet, monkeypatch, capsys):
 
 def test_clock_and_infostring_nonarduino_patched(fet, monkeypatch):
     monkeypatch.setattr(fet, "MONpeek16", lambda a: 0x4321)
-    monkeypatch.setattr(fet, "MONpeek8", lambda a: 0x0A if a == 0xff0 else 0x0B)
+    monkeypatch.setattr(fet, "MONpeek8", lambda a: 0x0A if a == 0xFF0 else 0x0B)
     assert fet.monitorgetclock() == 0x4321
     assert fet.infostring() == "0a0b"
 
@@ -613,8 +638,13 @@ def test_monitor_list_apps(fet, monkeypatch, capsys):
     monkeypatch.setenv("board", "arduino")
     s = fet.serialport
     s.responder = lambda a, v, d: (
-        frame(0, 0x82, b"Jan 1 2020") + frame(0, 0x82, b"app1") + frame(0, 0x82, b"app2") + frame(0, 0x82, b"")
-        if v == 0x82 else b"")
+        frame(0, 0x82, b"Jan 1 2020")
+        + frame(0, 0x82, b"app1")
+        + frame(0, 0x82, b"app2")
+        + frame(0, 0x82, b"")
+        if v == 0x82
+        else b""
+    )
     assert fet.monitor_list_apps(True) == 1
     out = capsys.readouterr().out
     assert "Build Date" in out and "app2" in out
@@ -623,7 +653,7 @@ def test_monitor_list_apps(fet, monkeypatch, capsys):
 
 def test_monitortest(fet, monkeypatch, capsys):
     monkeypatch.setattr(fet, "monitorclocking", lambda: "0x0000")
-    monkeypatch.setattr(fet, "MONpeek16", lambda a: 0x0c04)
+    monkeypatch.setattr(fet, "MONpeek16", lambda a: 0x0C04)
     monkeypatch.setattr(fet, "pokebyte", lambda *a, **k: 0)
     monkeypatch.setattr(fet, "MONpeek8", lambda a: 0)
     monkeypatch.setattr(fet, "monitorecho", lambda: 1)
@@ -634,6 +664,7 @@ def test_monitortest(fet, monkeypatch, capsys):
 
     def bad16(a):
         return 0x1111
+
     monkeypatch.setattr(fet, "MONpeek16", bad16)
     monkeypatch.setattr(fet, "MONpeek8", lambda a: 1)
     monkeypatch.setattr(fet, "monitorecho", lambda: 0)

@@ -1,4 +1,4 @@
-'''
+"""
 GoodFET Chipcon RF Radio Client for ApiMote Hardware
 
 (C) 2013 Ryan Speers <ryan at riverloopsecurity.com>
@@ -10,7 +10,7 @@ TODO list (help is welcomed):
   - RF testing and calibration for RSSI/dBm
   - Testing carrier jamming and implementing jammer_off()
   - Platform recognition (ApiMote versons)
-'''
+"""
 
 from typing import Optional, Dict, Union, Any, List
 
@@ -22,15 +22,16 @@ from .GoodFETCCSPI import GoodFETCCSPI
 
 CC2420_REG_SYNC: int = 0x14
 
+
 class APIMOTE:
     def __init__(self, dev: str) -> None:
-        '''
+        """
         Instantiates the KillerBee class for the ApiMote platform running GoodFET firmware.
         @type dev:   String
         @param dev:  Serial device identifier (ex /dev/ttyUSB0)
         @return: None
         @rtype: None
-        '''
+        """
         self.packet_queue: Optional[bytes] = None
         self.packet_queue_rssi: Optional[int] = None
 
@@ -52,7 +53,7 @@ class APIMOTE:
         self.__set_capabilities()
 
     def close(self) -> None:
-        
+
         if self.handle is None:
             raise Exception("Handle does not exist")
 
@@ -66,11 +67,11 @@ class APIMOTE:
         return self.capabilities.getlist()
 
     def __set_capabilities(self) -> None:
-        '''
+        """
         Sets the capability information appropriate for GoodFETCCSPI client and firmware.
         @rtype: None
         @return: None
-        '''
+        """
         self.capabilities.setcapab(KBCapabilities.FREQ_2400, True)
         self.capabilities.setcapab(KBCapabilities.SNIFF, True)
         self.capabilities.setcapab(KBCapabilities.SETCHAN, True)
@@ -82,16 +83,16 @@ class APIMOTE:
 
     # KillerBee expects the driver to implement this function
     def get_dev_info(self) -> List[Union[str, Any]]:
-        '''
+        """
         Returns device information in a list identifying the device.
         @rtype: List
         @return: List of 3 strings identifying device.
-        '''
+        """
         return [self.dev, "GoodFET Apimote v2", ""]
 
     # KillerBee expects the driver to implement this function
-    def sniffer_on(self, channel: Optional[int]=None, page: int=0) -> None:
-        '''
+    def sniffer_on(self, channel: Optional[int] = None, page: int = 0) -> None:
+        """
         Turns the sniffer on such that pnext() will start returning observed
         data.  Will set the command mode to Air Capture if it is not already
         set.
@@ -100,9 +101,9 @@ class APIMOTE:
         @type page: Integer
         @param page: Sets the subghz page, not supported on this device
         @rtype: None
-        '''
+        """
         self.capabilities.require(KBCapabilities.SNIFF)
-        
+
         if self.handle is None:
             raise Exception("Handle does not exist")
 
@@ -111,30 +112,30 @@ class APIMOTE:
 
         if channel is not None:
             self.set_channel(channel, page)
-        
+
         self.handle.CC_RFST_RX()
 
         self.__stream_open = True
 
     # KillerBee expects the driver to implement this function
     def sniffer_off(self) -> None:
-        '''
+        """
         Turns the sniffer off, freeing the hardware for other functions.  It is
         not necessary to call this function before closing the interface with
         close().
         @rtype: None
-        '''
-        #TODO actually have firmware stop sending us packets!
+        """
+        # TODO actually have firmware stop sending us packets!
         self.__stream_open = False
 
     # KillerBee expects the driver to implement this function
-    def set_channel(self, channel: int, page: int=0) -> None:
-        '''
+    def set_channel(self, channel: int, page: int = 0) -> None:
+        """
         Sets the radio interface to the specifid channel (limited to 2.4 GHz channels 11-26)
         @type channel: Integer
         @param channel: Sets the channel, optional
         @rtype: None
-        '''
+        """
         if self.handle is None:
             raise Exception("Handle does not exist")
 
@@ -144,15 +145,22 @@ class APIMOTE:
             self._channel = channel
             self.handle.RF_setchan(channel)
         else:
-            raise Exception('Invalid channel')
+            raise Exception("Invalid channel")
         if page:
-            raise Exception('SubGHz not supported')
+            raise Exception("SubGHz not supported")
 
     # KillerBee expects the driver to implement this function
-    def inject(self, packet: bytes, channel: Optional[int]=None, count: int=1, delay: int=0, page: int=0) -> None:
-        '''
+    def inject(
+        self,
+        packet: bytes,
+        channel: Optional[int] = None,
+        count: int = 1,
+        delay: int = 0,
+        page: int = 0,
+    ) -> None:
+        """
         Injects the specified packet contents.
-        @type packet: Bytes 
+        @type packet: Bytes
         @param packet: Packet contents to transmit, without FCS.
         @type channel: Integer
         @param channel: Sets the channel, optional
@@ -163,36 +171,38 @@ class APIMOTE:
         @type delay: Float
         @param delay: Delay between each frame, def=1
         @rtype: None
-        '''
+        """
         if self.handle is None:
             raise Exception("Handle does not exist")
 
         self.capabilities.require(KBCapabilities.INJECT)
 
         if len(packet) < 1:
-            raise Exception('Empty packet')
-        if len(packet) > 125:                   # 127 - 2 to accommodate FCS
-            raise Exception('Packet too long')
+            raise Exception("Empty packet")
+        if len(packet) > 125:  # 127 - 2 to accommodate FCS
+            raise Exception("Packet too long")
 
         if channel is not None:
             self.set_channel(channel, page)
 
-        self.handle.RF_autocrc(1)               #let radio add the CRC
+        self.handle.RF_autocrc(1)  # let radio add the CRC
         for pnum in range(0, count):
-            gfready = list(bytearray(packet))  #convert packet string to GoodFET expected integer format
-            gfready.insert(0, len(gfready)+2)   #add a length that leaves room for CRC
+            gfready = list(
+                bytearray(packet)
+            )  # convert packet string to GoodFET expected integer format
+            gfready.insert(0, len(gfready) + 2)  # add a length that leaves room for CRC
             self.handle.RF_txpacket(gfready)
             time.sleep(1)
 
     # KillerBee expects the driver to implement this function
-    def pnext(self, timeout: int=100) -> Any:
-        '''
+    def pnext(self, timeout: int = 100) -> Any:
+        """
         Returns a dictionary containing packet data, else None.
         @type timeout: Integer
         @param timeout: Timeout to wait for packet reception in usec
         @rtype: List
         @return: Returns None is timeout expires and no packet received.  When a packet is received, a dictionary is returned with the keys bytes (string of packet bytes), validcrc (boolean if a vaid CRC), rssi (unscaled RSSI), and location (may be set to None). For backwards compatibility, keys for 0,1,2 are provided such that it can be treated as if a list is returned, in the form [ String: packet contents | Bool: Valid CRC | Int: Unscaled RSSI ]
-        '''
+        """
 
         if self.handle is None:
             raise Exception("Handle does not exist")
@@ -206,9 +216,11 @@ class APIMOTE:
             packet: Optional[bytes] = None
             start = datetime.now(timezone.utc)
 
-            while (packet is None) and ((start + timedelta(seconds=timeout)) > datetime.now(timezone.utc)):
+            while (packet is None) and (
+                (start + timedelta(seconds=timeout)) > datetime.now(timezone.utc)
+            ):
                 packet = self.handle.RF_rxpacket()
-                rssi = self.handle.RF_getrssi() #TODO calibrate
+                rssi = self.handle.RF_getrssi()  # TODO calibrate
 
             if packet is None:
                 return None
@@ -218,9 +230,9 @@ class APIMOTE:
 
         # Split off the first frame (length byte excluded); keep any trailing frames queued.
         flen = packet[0]
-        frame = bytes(packet[1:flen+1])
-        if flen+1 < len(packet):
-            self.packet_queue = bytes(packet[flen+1:])
+        frame = bytes(packet[1 : flen + 1])
+        if flen + 1 < len(packet):
+            self.packet_queue = bytes(packet[flen + 1 :])
             self.packet_queue_rssi = rssi
         else:
             self.packet_queue = None
@@ -229,47 +241,53 @@ class APIMOTE:
         validcrc: bool = False
         if frame[-2:] == makeFCS(frame[:-2]):
             validcrc = True
-        #Return in a nicer dictionary format, so we don't have to reference by number indicies.
-        #Note that 0,1,2 indicies inserted twice for backwards compatibility.
+        # Return in a nicer dictionary format, so we don't have to reference by number indicies.
+        # Note that 0,1,2 indicies inserted twice for backwards compatibility.
         result: Dict[Union[int, str], Any] = {
-            0: frame, 
-            1: validcrc, 
-            2: rssi, 
-            'bytes': frame, 
-            'validcrc': validcrc, 
-            'rssi': rssi, 
-            'location': None
+            0: frame,
+            1: validcrc,
+            2: rssi,
+            "bytes": frame,
+            "validcrc": validcrc,
+            "rssi": rssi,
+            "location": None,
         }
 
-        result['datetime'] = datetime.now(timezone.utc)
+        result["datetime"] = datetime.now(timezone.utc)
         if rssi is None:
-            result['dbm'] = None
-        else:          
-            result['dbm'] = rssi - 45 #TODO tune specifically to the Apimote platform (does ext antenna need to different?)
+            result["dbm"] = None
+        else:
+            result["dbm"] = (
+                rssi - 45
+            )  # TODO tune specifically to the Apimote platform (does ext antenna need to different?)
         return result
- 
-    def ping(self, da: Any, panid: Any, sa: Any, channel: Optional[int]=None, page: int=0) -> None:
-        '''
+
+    def ping(
+        self, da: Any, panid: Any, sa: Any, channel: Optional[int] = None, page: int = 0
+    ) -> None:
+        """
         Not yet implemented.
         @return: None
         @rtype: None
-        '''
-        raise Exception('Not yet implemented')
+        """
+        raise Exception("Not yet implemented")
 
-    def jammer_on(self, channel: Optional[int]=None, page: int=0, method: Optional[str]=None) -> None:
-        '''
+    def jammer_on(
+        self, channel: Optional[int] = None, page: int = 0, method: Optional[str] = None
+    ) -> None:
+        """
         Implements reflexive jamming or constant carrier wave jamming.
         @type channel: Integer
         @param channel: Sets the channel, optional
         @type page: Integer
         @param page: Sets the subghz page, not supported on this device
         @rtype: None
-        '''
+        """
 
         if self.handle is None:
             raise Exception("Handle does not exist")
 
-        if method is None: 
+        if method is None:
             method = "constant"
 
         if method == "reflexive":
@@ -277,7 +295,7 @@ class APIMOTE:
         elif method == "constant":
             self.capabilities.require(KBCapabilities.PHYJAM)
         else:
-            raise ValueError('Parameter "method" must be either \'reflexive\' or \'constant\'.')
+            raise ValueError("Parameter \"method\" must be either 'reflexive' or 'constant'.")
 
         self.handle.RF_promiscuity(1)
         self.handle.RF_autocrc(0)
@@ -288,13 +306,13 @@ class APIMOTE:
         self.handle.CC_RFST_RX()
 
         if method == "reflexive":
-            self.handle.RF_reflexjam() 
-        elif method == 'constant':
-            self.handle.RF_carrier()  
+            self.handle.RF_reflexjam()
+        elif method == "constant":
+            self.handle.RF_carrier()
 
-    #TODO maybe move sync to byte string rather than int
-    def set_sync(self, sync: int=0xA70F) -> Any:
-        '''Set the register controlling the 802.15.4 PHY sync byte.'''
+    # TODO maybe move sync to byte string rather than int
+    def set_sync(self, sync: int = 0xA70F) -> Any:
+        """Set the register controlling the 802.15.4 PHY sync byte."""
         if self.handle is None:
             raise Exception("Handle does not exist")
 
@@ -304,11 +322,10 @@ class APIMOTE:
         return self.handle.poke(CC2420_REG_SYNC, sync)
 
     def jammer_off(self) -> None:
-        '''
+        """
         Not yet implemented.
         @return: None
         @rtype: None
-        '''
-        #TODO implement
-        raise Exception('Not yet implemented')
-
+        """
+        # TODO implement
+        raise Exception("Not yet implemented")

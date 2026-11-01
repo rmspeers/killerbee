@@ -22,7 +22,7 @@ NOTE: This script will not handle all scenarios with longer addressing or differ
 
 def create_packet(panid, source, dest, data, extsource=False, ack=False, shortaddress=True, seq=0):
     if extsource == False:
-        extsource = ''
+        extsource = ""
 
     if shortaddress:
         mode = 0b10
@@ -64,41 +64,43 @@ def create_packet(panid, source, dest, data, extsource=False, ack=False, shortad
 
     # security enabled? one bit
     fcf = fcf << 1
-    fcf = fcf ^ 0 # TODO: eventually support encryption.
+    fcf = fcf ^ 0  # TODO: eventually support encryption.
 
     # data type - hardlocked for this app at "data" type -- three bits
     fcf = fcf << 3
-    fcf = fcf ^ 1 # 0b001
+    fcf = fcf ^ 1  # 0b001
 
-    framecontrol = struct.pack('<H', fcf)
+    framecontrol = struct.pack("<H", fcf)
     mypacket = [
         framecontrol,
-        struct.pack('<b', seq),     #convert sequence num from dec to hex
-        struct.pack('<H', panid),   # you best have this correct
-        struct.pack('<H', dest),    # " "
-        struct.pack('<H', source),  # " "
-        #hex(extsource),
-        binascii.unhexlify(data)    # hex
+        struct.pack("<b", seq),  # convert sequence num from dec to hex
+        struct.pack("<H", panid),  # you best have this correct
+        struct.pack("<H", dest),  # " "
+        struct.pack("<H", source),  # " "
+        # hex(extsource),
+        binascii.unhexlify(data),  # hex
     ]
-    return b''.join(mypacket)
+    return b"".join(mypacket)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Command-line arguments
     parser = argparse.ArgumentParser()
-    tohex = lambda s: int(s.replace(':', ''), 16)
-    parser.add_argument('-f', '--channel', '-c', action='store', dest='channel', required=True, type=int, default=11)
-    parser.add_argument('-i', '--interface', action='store', dest='devstring')
-    parser.add_argument('-p', '--panid', action='store', required=True, type=tohex)
-    parser.add_argument('-s', '--source', action='store', required=True, type=tohex)
-    parser.add_argument('-d', '--dest', action='store', required=True, type=tohex)
-    parser.add_argument('-e', '--extsource', action='store', required=False, type=tohex)
-    parser.add_argument('--data', action='store', required=True, type=str)
-    parser.add_argument('-a', '--ack', default=False, action='store_true', required=False)
-    parser.add_argument('-l', '--shortaddress', default=True, action='store_true', required=False)
-    parser.add_argument('-n', '--seqnum', default=1, action='store', required=False, type=int)
-    parser.add_argument('-r', '--respond', default=False, action='store_true', required=False)
-    parser.add_argument('--numloops', action='store', default=1, type=int)
+    tohex = lambda s: int(s.replace(":", ""), 16)
+    parser.add_argument(
+        "-f", "--channel", "-c", action="store", dest="channel", required=True, type=int, default=11
+    )
+    parser.add_argument("-i", "--interface", action="store", dest="devstring")
+    parser.add_argument("-p", "--panid", action="store", required=True, type=tohex)
+    parser.add_argument("-s", "--source", action="store", required=True, type=tohex)
+    parser.add_argument("-d", "--dest", action="store", required=True, type=tohex)
+    parser.add_argument("-e", "--extsource", action="store", required=False, type=tohex)
+    parser.add_argument("--data", action="store", required=True, type=str)
+    parser.add_argument("-a", "--ack", default=False, action="store_true", required=False)
+    parser.add_argument("-l", "--shortaddress", default=True, action="store_true", required=False)
+    parser.add_argument("-n", "--seqnum", default=1, action="store", required=False, type=int)
+    parser.add_argument("-r", "--respond", default=False, action="store_true", required=False)
+    parser.add_argument("--numloops", action="store", default=1, type=int)
 
     args = parser.parse_args()
     kb = KillerBee(device=args.devstring)
@@ -107,8 +109,17 @@ if __name__ == '__main__':
     # TODO: not sure if this accounts for long address addressing schemes in 802.15.4
     def response_handler(packet):
         if len(packet) > 7:
-            if packet[9] == b'\x04': # we check if it is a data request, if so, then:
-                sp = create_packet(args.panid, args.source, args.dest, args.data, args.extsource, args.ack, args.shortaddress, args.seqnum)
+            if packet[9] == b"\x04":  # we check if it is a data request, if so, then:
+                sp = create_packet(
+                    args.panid,
+                    args.source,
+                    args.dest,
+                    args.data,
+                    args.extsource,
+                    args.ack,
+                    args.shortaddress,
+                    args.seqnum,
+                )
                 kb.sniffer_off()
                 kb.inject(sp)
                 print("DATA REQUEST received and response has been sent.")
@@ -133,6 +144,15 @@ if __name__ == '__main__':
         i = 0
         while i < args.numloops:
             i += 1
-            data_packet = create_packet(args.panid, args.source, args.dest, args.data, args.extsource, args.ack, args.shortaddress, args.seqnum)
+            data_packet = create_packet(
+                args.panid,
+                args.source,
+                args.dest,
+                args.data,
+                args.extsource,
+                args.ack,
+                args.shortaddress,
+                args.seqnum,
+            )
             kb.inject(data_packet)
             sleep(0.1)

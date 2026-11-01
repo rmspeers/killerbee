@@ -1,5 +1,6 @@
 """Tests for GoodFETAVR, GoodFETCCSPI, GoodFETatmel128, dev_apimote, dev_telosb
 and dev_template, with the serial port replaced by a scripted fake."""
+
 import struct
 import sys
 import types
@@ -22,6 +23,7 @@ def frame(app, verb, data=b""):
 
 class FakeSerial:
     """Scripted serial port; see tests/test_goodfet.py for the full description."""
+
     PARITY_NONE = "N"
 
     def __init__(self, *args, **kwargs):
@@ -49,8 +51,8 @@ class FakeSerial:
             if len(self.pending) < 4 + ln:
                 break
             app, verb = self.pending[0], self.pending[1]
-            payload = bytes(self.pending[4:4 + ln])
-            del self.pending[:4 + ln]
+            payload = bytes(self.pending[4 : 4 + ln])
+            del self.pending[: 4 + ln]
             self.frames.append((app, verb, payload))
             if self.responder:
                 self.rx += self.responder(app, verb, payload) or b""
@@ -70,7 +72,6 @@ class FakeSerial:
 
     def getCTS(self):
         return 1
-
 
 
 BANNER = frame(0x00, 0x7F, b"http://goodfet.sf.net/")
@@ -93,16 +94,16 @@ class FakeCC2420:
                 return frame(0, 0x81, p)
             return frame(0, verb)
         if app == 0x51:
-            if verb == 0x02:   # peek
+            if verb == 0x02:  # peek
                 v = self.regs.get(p[0], 0)
                 return frame(app, verb, bytes([0, v >> 8, v & 0xFF]))
-            if verb == 0x03:   # poke
+            if verb == 0x03:  # poke
                 self.regs[p[0]] = (p[1] << 8) | p[2]
                 return frame(app, verb)
-            if verb == 0x00:   # trans / strobe
+            if verb == 0x00:  # trans / strobe
                 self.strobes.append(p[0])
                 return frame(app, verb, bytes([self.status]))
-            if verb == 0x80:   # rx
+            if verb == 0x80:  # rx
                 return frame(app, verb, self.rxq.pop(0) if self.rxq else b"")
             if verb == 0x81:
                 self.txed.append(p)
@@ -130,6 +131,7 @@ def _env(monkeypatch):
 def cc_device(monkeypatch):
     """Patch serial.Serial so any GoodFET connects to a FakeCC2420."""
     import serial
+
     dev = FakeCC2420()
     ports = []
 
@@ -139,6 +141,7 @@ def cc_device(monkeypatch):
         s.responder = dev
         ports.append(s)
         return s
+
     monkeypatch.setattr(serial, "Serial", factory)
     dev.ports = ports
     return dev
@@ -153,6 +156,7 @@ def scripted(obj, replies):
         if replies:
             obj.data = replies.pop(0)
         return obj.data
+
     obj.writecmd = fake
     obj.calls = calls
     return calls
@@ -246,8 +250,8 @@ class TestCCSPI:
         assert cc_device.strobes == [1, 1, 2]
 
     def test_ident(self, cc, cc_device):
-        cc_device.regs[0x1E] = 0x233d
-        assert cc.ident() == 0x233d
+        cc_device.regs[0x1E] = 0x233D
+        assert cc.ident() == 0x233D
         assert cc.identstr() == "CC2420"
         cc_device.regs[0x1E] = 0x1111
         assert cc.identstr() == "Unknown0x1111"
@@ -293,15 +297,15 @@ class TestCCSPI:
         assert cc.RF_getenc() == "802.15.4"
         assert cc.RF_getrate() == 0
         assert cc.RF_setrate() == 0
-        assert cc.RF_getsmac() == 0xdeadbeef
-        assert cc.RF_setsmac(1) == 0xdeadbeef
-        assert cc.RF_gettmac() == 0xdeadbeef
-        assert cc.RF_settmac(1) == 0xdeadbeef
+        assert cc.RF_getsmac() == 0xDEADBEEF
+        assert cc.RF_setsmac(1) == 0xDEADBEEF
+        assert cc.RF_gettmac() == 0xDEADBEEF
+        assert cc.RF_settmac(1) == 0xDEADBEEF
 
     def test_sync(self, cc, cc_device):
         cc.RF_setsync()
-        assert cc_device.regs[0x14] == 0xa70F
-        assert cc.RF_getsync() == 0xa70F
+        assert cc_device.regs[0x14] == 0xA70F
+        assert cc.RF_getsync() == 0xA70F
 
     def test_key_nonce(self, cc, capsys):
         cc.RF_setkey("k")
@@ -329,7 +333,7 @@ class TestCCSPI:
 
     def test_txrxpacket(self, cc, cc_device):
         assert cc.RF_txrxpacket([1, 2]) is None
-        assert cc.RF_txrxpacket(b"\x01\x02") is None   # bytes accepted too
+        assert cc.RF_txrxpacket(b"\x01\x02") is None  # bytes accepted too
         cc_device.rxq.append(b"\x03abc")
         assert cc.RF_txrxpacket([1, 2], timeout=300) == bytearray(b"\x03abc")
 
@@ -354,7 +358,7 @@ class TestCCSPI:
 
     def test_modulated_spectrum_and_carrier(self, cc, cc_device):
         cc.RF_modulated_spectrum()
-        assert cc_device.regs[0x12] & 0x00c0 == 0x00c0
+        assert cc_device.regs[0x12] & 0x00C0 == 0x00C0
         assert cc_device.strobes[-3:] == [2, 9, 4]
         cc.RF_carrier()
         assert cc_device.regs[0x2E] == 0x1800
@@ -399,12 +403,14 @@ class TestCCSPI:
 
     def test_printdissect_no_scapy(self, cc, monkeypatch, capsys):
         import builtins
+
         real = builtins.__import__
 
         def imp(name, *a, **k):
             if name == "scapy.all":
                 raise ImportError("no scapy")
             return real(name, *a, **k)
+
         monkeypatch.setattr(builtins, "__import__", imp)
         monkeypatch.setattr(cc, "printpacket", lambda p, prefix="#": None)
         cc.printdissect(b"\x00\x01")
@@ -438,7 +444,7 @@ class TestAtmel128:
         f.serialport = FakeSerial()
         f.serialport.responder = lambda a, v, d: frame(a, v)
         assert f.writecmd(1, 2) == b""
-        assert f.writecmd(1, 3, 4) == b""   # count without data: nothing to send
+        assert f.writecmd(1, 3, 4) == b""  # count without data: nothing to send
         assert f.serialport.frames == [(1, 2, b""), (1, 3, b"")]
 
     def test_writecmd_verbose(self, at, capsys):
@@ -450,6 +456,7 @@ class TestAtmel128:
 
     def test_serinit_env_without_glob_match(self, at, monkeypatch):
         import serial
+
         monkeypatch.setattr(serial, "Serial", FakeSerial)
         monkeypatch.setattr(atmod.glob, "glob", lambda p: [])
         monkeypatch.setenv("GOODFET", "/dev/envport")
@@ -467,7 +474,7 @@ class TestAtmel128:
 
     def test_readcmd_partial_header(self, at, capsys):
         at.verbose = True
-        at.serialport.rx += bytes([0x01])           # app only: verb, count missing
+        at.serialport.rx += bytes([0x01])  # app only: verb, count missing
         at.readcmd()
         assert at.verb == 0 and at.count == 0
 
@@ -494,6 +501,7 @@ class TestAtmel128:
             if verb == 0x03:
                 regs[p[0]] = p[2]
             return frame(app, verb)
+
         at.serialport.responder = resp
         at.poke(0x08, 0x15)
         assert regs[0x08] == 0x15
@@ -537,7 +545,7 @@ class TestAtmel128:
         assert at.serialport.frames[-1][:3] == (0x53, 0x81, b"\x01\x02\x03")
 
     def test_rssi(self, at):
-        vals = iter([0, 0x10, 0x7f])
+        vals = iter([0, 0x10, 0x7F])
         at.peek = lambda reg, bytes=1: next(vals)
         assert at.RF_getrssi() == -91
         assert at.RF_getrssi() == 0x10 - 90
@@ -559,6 +567,7 @@ class TestAtmel128:
     @pytest.fixture
     def py2serial(self, monkeypatch):
         import serial
+
         made = []
 
         def factory(*a, **k):
@@ -567,6 +576,7 @@ class TestAtmel128:
             s.responder = lambda a_, v, d: frame(a_, v, d)
             made.append(s)
             return s
+
         monkeypatch.setattr(serial, "Serial", factory)
         monkeypatch.setattr(atmod.glob, "glob", lambda p: [])
         return made
@@ -598,6 +608,7 @@ class TestAtmel128:
 
     def test_pyserinit_attemptlimit(self, monkeypatch):
         import serial
+
         monkeypatch.setattr(serial, "Serial", FakeSerial)
         f = atmod.GoodFETatmel128rfa1()
         f.pyserInit("/dev/x", 2, 1)
@@ -612,7 +623,9 @@ class TestAtmel128:
         assert py2serial[-1].args[0] == "/dev/e1"
         monkeypatch.delenv("GOODFET")
         for hit in ("/dev/tty.usbserial*", "/dev/ttyUSB*", "/dev/ttyU0"):
-            monkeypatch.setattr(atmod.glob, "glob", lambda p, hit=hit: ["/dev/h"] if p == hit else [])
+            monkeypatch.setattr(
+                atmod.glob, "glob", lambda p, hit=hit: ["/dev/h"] if p == hit else []
+            )
             f = atmod.GoodFETatmel128rfa1()
             f.pyserInit(None, 2, None)
             assert py2serial[-1].args[0] == "/dev/h"
@@ -625,6 +638,7 @@ class TestAtmel128:
         class Scan:
             def comports(self):
                 return [(1, "COM9", "d", "FTDIxx"), (2, "COM2", "d", 7)]
+
         m = types.ModuleType("scanwin32")
         m.winScan = Scan
         monkeypatch.setitem(sys.modules, "scanwin32", m)
@@ -645,6 +659,7 @@ def apimote(cc_device):
 class TestApimote:
     def test_init_and_info(self, apimote, cc_device):
         import os
+
         assert os.environ["board"] == "apimote2"
         assert apimote.get_dev_info() == ["/dev/ttyUSB9", "GoodFET Apimote v2", ""]
         assert apimote.check_capability(KBCapabilities.PHYJAM)
@@ -671,12 +686,14 @@ class TestApimote:
     def test_handle_none_errors(self, apimote):
         apimote.handle.serClose()
         apimote.handle = None
-        for call in (lambda: apimote.sniffer_on(),
-                     lambda: apimote.set_channel(11),
-                     lambda: apimote.inject(b"x"),
-                     lambda: apimote.pnext(),
-                     lambda: apimote.jammer_on(),
-                     lambda: apimote.set_sync()):
+        for call in (
+            lambda: apimote.sniffer_on(),
+            lambda: apimote.set_channel(11),
+            lambda: apimote.inject(b"x"),
+            lambda: apimote.pnext(),
+            lambda: apimote.jammer_on(),
+            lambda: apimote.set_sync(),
+        ):
             with pytest.raises(Exception, match="Handle does not exist"):
                 call()
 
@@ -754,6 +771,7 @@ def telos(cc_device):
 class TestTelosB:
     def test_init(self, telos):
         import os
+
         assert os.environ["board"] == "telosb"
         assert telos.get_dev_info() == ["/dev/ttyUSB7", "TelosB/Tmote", ""]
         assert telos.check_capability(KBCapabilities.PHYJAM_REFLEX)
@@ -873,8 +891,12 @@ class TestTemplate:
 
     def test_handle_none(self, tmpl):
         tmpl.handle = None
-        for call in (lambda: tmpl.sniffer_on(), lambda: tmpl.set_channel(11),
-                     lambda: tmpl.inject(b"x"), lambda: tmpl.pnext()):
+        for call in (
+            lambda: tmpl.sniffer_on(),
+            lambda: tmpl.set_channel(11),
+            lambda: tmpl.inject(b"x"),
+            lambda: tmpl.pnext(),
+        ):
             with pytest.raises(Exception, match="Handle does not exist"):
                 call()
 
@@ -895,4 +917,5 @@ class TestTemplate:
     def test_pnext_with_frame_crc(self, tmpl):
         # The template never produces a frame; exercise the crc branch via a patched frame source.
         import killerbee.dev_template as t
+
         assert t.makeFCS(b"") is not None

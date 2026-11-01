@@ -3,17 +3,23 @@ import struct
 import pytest
 
 from killerbee.zigbeedecode import (
-    ZigBeeNWKPacketParser, ZigBeeAPSPacketParser,
-    ZBEE_NWK_FCF_EXT_DEST, ZBEE_NWK_FCF_EXT_SOURCE, ZBEE_NWK_FCF_MULTICAST,
-    ZBEE_NWK_FCF_SOURCE_ROUTE, ZBEE_NWK_FCF_CMD,
-    ZBEE_APS_FCF_DATA, ZBEE_APS_FCF_CMD, ZBEE_APS_FCF_ACK, ZBEE_APS_FCF_EXT_HEADER,
+    ZigBeeNWKPacketParser,
+    ZigBeeAPSPacketParser,
+    ZBEE_NWK_FCF_EXT_DEST,
+    ZBEE_NWK_FCF_EXT_SOURCE,
+    ZBEE_NWK_FCF_MULTICAST,
+    ZBEE_NWK_FCF_SOURCE_ROUTE,
+    ZBEE_NWK_FCF_CMD,
+    ZBEE_APS_FCF_DATA,
+    ZBEE_APS_FCF_CMD,
+    ZBEE_APS_FCF_ACK,
+    ZBEE_APS_FCF_EXT_HEADER,
 )
 
 
 # ---------------------------------------------------------------- NWK
 def nwk(fc=0, tail=b"", payload=b"PL"):
-    return (struct.pack("<H", fc) + b"\x01\x02" + b"\x03\x04" + b"\x1e\x55"
-            + tail + payload)
+    return struct.pack("<H", fc) + b"\x01\x02" + b"\x03\x04" + b"\x1e\x55" + tail + payload
 
 
 def test_nwk_too_small():
@@ -118,11 +124,11 @@ def test_aps_type_mode_matrix(ftype, mode):
     assert chop[0] == bytes([fc(ftype, mode)])
     off = 0
     for i, size in enumerate(sizes):
-        assert chop[1 + i] == body[off:off + size], i
+        assert chop[1 + i] == body[off : off + size], i
         off += size
-    assert chop[6] == body[off:off + 1]            # APS counter
-    assert chop[7] == chop[8] == b""               # no extended header
-    assert chop[9] == body[off + 1:]               # payload
+    assert chop[6] == body[off : off + 1]  # APS counter
+    assert chop[7] == chop[8] == b""  # no extended header
+    assert chop[9] == body[off + 1 :]  # payload
     assert p.hdrlen(pkt) == 1 + sum(sizes) + 1
     assert p.payloadlen(pkt) == len(body) - sum(sizes) - 1
     assert b"".join(chop) == pkt
@@ -141,15 +147,29 @@ def test_aps_data_unicast_fields():
     p = ZigBeeAPSPacketParser()
     pkt = aps(0x00, b"\x0a" + b"\x01\x02" + b"\x03\x04" + b"\x0b", b"\x05" + b"PAY")
     chop = p.pktchop(pkt)
-    assert chop == [b"\x00", b"\x0a", b"", b"\x01\x02", b"\x03\x04", b"\x0b",
-                    b"\x05", b"", b"", b"PAY"]
+    assert chop == [
+        b"\x00",
+        b"\x0a",
+        b"",
+        b"\x01\x02",
+        b"\x03\x04",
+        b"\x0b",
+        b"\x05",
+        b"",
+        b"",
+        b"PAY",
+    ]
     assert p.hdrlen(pkt) == 8
     assert p.payloadlen(pkt) == 3
 
 
 def test_aps_data_group_fields():
     p = ZigBeeAPSPacketParser()
-    pkt = aps(fc(ZBEE_APS_FCF_DATA, 3), b"\xaa\xbb" + b"\x01\x02" + b"\x03\x04" + b"\x0b", b"\x05" + b"PAY")
+    pkt = aps(
+        fc(ZBEE_APS_FCF_DATA, 3),
+        b"\xaa\xbb" + b"\x01\x02" + b"\x03\x04" + b"\x0b",
+        b"\x05" + b"PAY",
+    )
     chop = p.pktchop(pkt)
     assert chop[1:6] == [b"", b"\xaa\xbb", b"\x01\x02", b"\x03\x04", b"\x0b"]
     assert chop[-1] == b"PAY"
@@ -178,7 +198,7 @@ def test_aps_extended_header_fragmented(ftype):
 
 def test_aps_extended_header_not_fragmented():
     p = ZigBeeAPSPacketParser()
-    pkt = bytes([0x80, 0x0a, 1, 2, 3, 4, 0x0b, 0x05, 0x00]) + b"XXXX"
+    pkt = bytes([0x80, 0x0A, 1, 2, 3, 4, 0x0B, 0x05, 0x00]) + b"XXXX"
     chop = p.pktchop(pkt)
     # FC, then unicast addressing, counter, then a zero fragmentation byte
     assert chop[7] == b"\x00" and chop[8] == b""
@@ -193,17 +213,17 @@ def test_aps_too_small():
 
 def test_aps_pktchop_bytes():
     p = ZigBeeAPSPacketParser()
-    pkt = bytes([0x00, 0xaa, 1, 2, 3, 4, 0xbb, 0x09]) + b"XX"
+    pkt = bytes([0x00, 0xAA, 1, 2, 3, 4, 0xBB, 0x09]) + b"XX"
     assert p.pktchop(pkt)[-1] == b"XX"
 
 
 def test_aps_hdrlen_bytes():
     p = ZigBeeAPSPacketParser()
-    pkt = bytes([0x00, 0xaa, 1, 2, 3, 4, 0xbb, 0x09]) + b"XX"
+    pkt = bytes([0x00, 0xAA, 1, 2, 3, 4, 0xBB, 0x09]) + b"XX"
     assert p.hdrlen(pkt) == 8
 
 
 def test_aps_payloadlen_bytes():
     p = ZigBeeAPSPacketParser()
-    pkt = bytes([0x00, 0xaa, 1, 2, 3, 4, 0xbb, 0x09]) + b"XX"
+    pkt = bytes([0x00, 0xAA, 1, 2, 3, 4, 0xBB, 0x09]) + b"XX"
     assert p.payloadlen(pkt) == 2

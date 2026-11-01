@@ -1,4 +1,5 @@
 """Tests for the Silabs drivers (BeeHive and NodeTest) using a fake serial port."""
+
 import pytest
 
 from killerbee import dev_sl_beehive as bh
@@ -53,6 +54,7 @@ def install(monkeypatch, mod, **kw):
         s = FakeSerial(**kw)
         holder["s"] = s
         return s
+
     monkeypatch.setattr(mod.serial, "Serial", factory)
     return holder
 
@@ -247,8 +249,10 @@ def test_nt_sniffer_cycle(monkeypatch):
 
 def nt_line(payload=(1, 2, 3), rssi="-40", length=None):
     n = "%02x" % (len(payload) if length is None else length)
-    toks = " ".join(["1", "0", "0", "0", "0", "200", rssi, "3", "5", "0", "100", "0", n] +
-                    ["0x%02x" % b for b in payload])
+    toks = " ".join(
+        ["1", "0", "0", "0", "0", "200", rssi, "3", "5", "0", "100", "0", n]
+        + ["0x%02x" % b for b in payload]
+    )
     return ("{" + toks + "}").encode()
 
 
@@ -261,8 +265,11 @@ def test_nt_pnext(monkeypatch):
     r = d.pnext()
     assert r["rssi"] == -40 and r["validcrc"] and r["bytes"][:3] == b"\x01\x02\x03"
     assert len(r["bytes"]) == 5
-    for bad in (nt_line(length=7), nt_line(payload=(1,)).replace(b"0x01", b"0xzz"),
-                nt_line(rssi="abc")):
+    for bad in (
+        nt_line(length=7),
+        nt_line(payload=(1,)).replace(b"0x01", b"0xzz"),
+        nt_line(rssi="abc"),
+    ):
         s.queue = [bad]
         assert d.pnext() is None
 

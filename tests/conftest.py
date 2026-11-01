@@ -6,6 +6,7 @@ so that drivers can be exercised with no hardware attached.
 If the environment variable APIMOTE_DEVSTRING is set, tests marked
 ``hardware`` run against the real device; otherwise they are skipped.
 """
+
 import os
 import struct
 
@@ -23,7 +24,7 @@ class FakeGoodFETSerial:
     """
 
     CCSPIAPP = 0x51
-    last = None               # most recently created instance
+    last = None  # most recently created instance
     # Boards (os.environ["board"]) for which the fake answers the GoodFET
     # handshake.  Others (e.g. "telosb", "apimote1") see a silent port, as
     # with real hardware of the wrong type.  Tests may override this.
@@ -37,11 +38,11 @@ class FakeGoodFETSerial:
         self.is_open = True
         self.rx = bytearray()
         self._tx = bytearray()
-        self.regs = {}            # CC2420 register file
-        self.strobes = []         # strobes received
-        self.sent = []            # (app, verb, data) of every command
-        self.tx_packets = []      # payloads passed to CCSPI/0x81
-        self.rx_packets = []      # bytes objects returned by CCSPI/0x80
+        self.regs = {}  # CC2420 register file
+        self.strobes = []  # strobes received
+        self.sent = []  # (app, verb, data) of every command
+        self.tx_packets = []  # payloads passed to CCSPI/0x81
+        self.rx_packets = []  # bytes objects returned by CCSPI/0x80
         self.rts = self.dtr = None
         if os.environ.get("board") in self.accepted_boards:
             self._queue_reply(0x00, 0x7F, BANNER)
@@ -99,31 +100,31 @@ class FakeGoodFETSerial:
             count = self._tx[2] | (self._tx[3] << 8)
             if len(self._tx) < 4 + count:
                 return
-            data = bytes(self._tx[4:4 + count])
-            del self._tx[:4 + count]
+            data = bytes(self._tx[4 : 4 + count])
+            del self._tx[: 4 + count]
             self.sent.append((app, verb, data))
             self._handle(app, verb, data)
 
     def _handle(self, app, verb, data):
-        if app == 0x00 and verb == 0x81:      # monitor echo, as real firmware does
+        if app == 0x00 and verb == 0x81:  # monitor echo, as real firmware does
             self._queue_reply(app, verb, data)
             return
         if app != self.CCSPIAPP:
             self._queue_reply(app, verb, b"")
             return
-        if verb == 0x00:                      # trans / strobe
+        if verb == 0x00:  # trans / strobe
             self.strobes.append(data[0] if data else None)
             self._queue_reply(app, verb, bytes([0x40]))
-        elif verb == 0x02:                    # peek
+        elif verb == 0x02:  # peek
             val = self.regs.get(data[0], 0)
             self._queue_reply(app, verb, bytes([data[0], (val >> 8) & 0xFF, val & 0xFF]))
-        elif verb == 0x03:                    # poke
+        elif verb == 0x03:  # poke
             self.regs[data[0]] = (data[1] << 8) | data[2]
             self._queue_reply(app, verb, b"")
-        elif verb == 0x80:                    # rx packet
+        elif verb == 0x80:  # rx packet
             pkt = self.rx_packets.pop(0) if self.rx_packets else b""
             self._queue_reply(app, verb, pkt)
-        elif verb == 0x81:                    # tx packet
+        elif verb == 0x81:  # tx packet
             self.tx_packets.append(bytes(data))
             self._queue_reply(app, verb, b"")
         else:
@@ -139,6 +140,7 @@ def fake_serial(monkeypatch):
     """
     import serial
     import time
+
     monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
     instances = []
 
@@ -163,6 +165,7 @@ class PyZigbeeCrypt:
     @staticmethod
     def _ctr_stream(key, nonce, data, start=1):
         from Crypto.Cipher import AES
+
         block = bytes([1]) + nonce + start.to_bytes(2, "big")
         c = AES.new(key, AES.MODE_CTR, nonce=b"", initial_value=block)
         return c.encrypt(data)
@@ -170,6 +173,7 @@ class PyZigbeeCrypt:
     @classmethod
     def encrypt_ccm(cls, key, nonce, mic_len, payload, zigbee_data):
         from Crypto.Cipher import AES
+
         if mic_len == 0:
             return cls._ctr_stream(key, nonce, payload), b""
         c = AES.new(key, AES.MODE_CCM, nonce=nonce, mac_len=mic_len)
@@ -185,12 +189,13 @@ class PyZigbeeCrypt:
     @staticmethod
     def _hash(data):
         from Crypto.Cipher import AES
+
         out = bytes(16)
         n = len(data)
         data = data + b"\x80"
         data += b"\x00" * ((-(len(data) + 2)) % 16) + (n * 8).to_bytes(2, "big")
         for i in range(0, len(data), 16):
-            blk = data[i:i + 16]
+            blk = data[i : i + 16]
             e = AES.new(out, AES.MODE_ECB).encrypt(blk)
             out = bytes(a ^ b for a, b in zip(e, blk))
         return out
@@ -198,7 +203,7 @@ class PyZigbeeCrypt:
     @classmethod
     def sec_key_hash(cls, key, inp):
         ipad = bytes(k ^ 0x36 for k in key)
-        opad = bytes(k ^ 0x5c for k in key)
+        opad = bytes(k ^ 0x5C for k in key)
         return cls._hash(opad + cls._hash(ipad + inp))
 
 
@@ -206,6 +211,7 @@ class PyZigbeeCrypt:
 def py_zigbee_crypt(monkeypatch):
     """Make ``import zigbee_crypt`` return the pure-python substitute."""
     import sys
+
     monkeypatch.setitem(sys.modules, "zigbee_crypt", PyZigbeeCrypt)
     return PyZigbeeCrypt
 
@@ -228,6 +234,7 @@ def apimote_env(monkeypatch):
         return
     import serial
     import time
+
     monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
     monkeypatch.setenv("APIMOTE_DEVSTRING", FAKE_DEVSTRING)
     instances = []
@@ -235,8 +242,7 @@ def apimote_env(monkeypatch):
     def factory(*a, **kw):
         port = a[0] if a else kw.get("port")
         if port != FAKE_DEVSTRING:
-            raise serial.serialutil.SerialException(
-                "could not open port %s: no such device" % port)
+            raise serial.serialutil.SerialException("could not open port %s: no such device" % port)
         s = FakeGoodFETSerial(*a, **kw)
         instances.append(s)
         return s
@@ -244,6 +250,7 @@ def apimote_env(monkeypatch):
     monkeypatch.setattr(serial, "Serial", factory)
 
     import glob
+
     real_glob = glob.glob
 
     def fake_glob(pattern, *a, **kw):

@@ -1,27 +1,27 @@
 import struct
 import time
 
-PCAPH_MAGIC_NUM = 0xa1b2c3d4
+PCAPH_MAGIC_NUM = 0xA1B2C3D4
 PCAPH_VER_MAJOR = 2
 PCAPH_VER_MINOR = 4
-PCAPH_THISZONE  = 0
-PCAPH_SIGFIGS   = 0
-PCAPH_SNAPLEN   = 65535
+PCAPH_THISZONE = 0
+PCAPH_SIGFIGS = 0
+PCAPH_SNAPLEN = 65535
 
 DOT11COMMON_TAG = 0o00002
-GPS_TAG		= 30002
+GPS_TAG = 30002
+
 
 class PcapReader:
-
     def __init__(self, savefile):
-        '''
+        """
         Opens the specified file, validates a libpcap header is present.
         @type savefile: String
         @param savefile: Input libpcap filename to open
         @rtype: None
-        '''
+        """
         PCAPH_LEN = 24
-        self.__fh = open(savefile, mode='rb')
+        self.__fh = open(savefile, mode="rb")
         self._pcaphsnaplen = 0
         header = self.__fh.read(PCAPH_LEN)
 
@@ -32,73 +32,75 @@ class PcapReader:
             self.__endflag = ">"
         else:
             self.__fh.close()
-            raise Exception('Specified file is not a libpcap capture')
+            raise Exception("Specified file is not a libpcap capture")
 
         try:
             pcaph = struct.unpack("%sIHHiIII" % self.__endflag, header)
         except struct.error:
             self.__fh.close()
-            raise Exception('Specified file is not a libpcap capture')
+            raise Exception("Specified file is not a libpcap capture")
 
         if pcaph[1] != PCAPH_VER_MAJOR or pcaph[2] != PCAPH_VER_MINOR:
             self.__fh.close()
-            raise Exception('Unsupported pcap header format or version')
+            raise Exception("Unsupported pcap header format or version")
 
         self._pcaphsnaplen = pcaph[5]
         self._datalink = pcaph[6]
 
     def datalink(self):
-        '''
+        """
         Returns the data link type for the packet capture.
         @rtype: Int
-        '''
+        """
         return self._datalink
 
     def close(self):
-        '''
+        """
         Closes the output packet capture; wrapper for pcap_close().
         @rtype: None
-        '''
+        """
         self.pcap_close()
 
     def pcap_close(self):
-        '''
+        """
         Closes the output packet capture.
         @rtype: None
-        '''
+        """
         self.__fh.close()
 
     def pnext(self):
-        '''
+        """
         Wrapper for pcap_next to mimic method for Daintree SNA.  See pcap_next()
-        '''
+        """
         return self.pcap_next()
- 
+
     def pcap_next(self):
-        '''
+        """
         Retrieves the next packet from the capture file.  Returns a list of
         [Hdr, packet] where Hdr is a list of [timestamp, snaplen, plen] and
         packet is a string of the payload content.  Returns None at the end
         of the packet capture.
         @rtype: List
-        '''
+        """
         # Read the next header block
         PCAPH_RECLEN = 16
         rechdrdata = self.__fh.read(PCAPH_RECLEN)
 
         try:
-            rechdrtmp = struct.unpack("%sIIII"%self.__endflag, rechdrdata)
+            rechdrtmp = struct.unpack("%sIIII" % self.__endflag, rechdrdata)
         except struct.error:
-            return [None,None]
+            return [None, None]
 
         # Record header is ts_sec | ts_usec | incl_len | orig_len
-        rechdr = [
-                rechdrtmp[0] + rechdrtmp[1] / 1e6,
-                rechdrtmp[2],
-                rechdrtmp[3]
-                ]
-        if rechdr[1] > rechdr[2] or rechdr[1] > self._pcaphsnaplen or rechdr[2] > self._pcaphsnaplen:
-            raise Exception('Corrupted or invalid libpcap record header (included length exceeds actual length)')
+        rechdr = [rechdrtmp[0] + rechdrtmp[1] / 1e6, rechdrtmp[2], rechdrtmp[3]]
+        if (
+            rechdr[1] > rechdr[2]
+            or rechdr[1] > self._pcaphsnaplen
+            or rechdr[2] > self._pcaphsnaplen
+        ):
+            raise Exception(
+                "Corrupted or invalid libpcap record header (included length exceeds actual length)"
+            )
 
         # Read the included packet length
         frame = self.__fh.read(rechdr[1])
@@ -106,8 +108,8 @@ class PcapReader:
 
 
 class PcapDumper:
-    def __init__(self, datalink, savefile, ppi = False):
-        '''
+    def __init__(self, datalink, savefile, ppi=False):
+        """
         Creates a libpcap file using the specified datalink type.
         @type datalink: Integer
         @param datalink: Datalink type, one of DLT_* defined in pcap-bpf.h
@@ -116,27 +118,32 @@ class PcapDumper:
         @type ppi: Boolean
         @param ppi: Include CACE Per-Packet Information (defaults to False)
         @rtype: None
-        '''
-        if ppi: from killerbee.pcapdlt import DLT_PPI
+        """
+        if ppi:
+            from killerbee.pcapdlt import DLT_PPI
         self.ppi = ppi
 
         if isinstance(savefile, str):
-            self.__fh = open(savefile, mode='wb')
-        elif hasattr(savefile, 'write'):
+            self.__fh = open(savefile, mode="wb")
+        elif hasattr(savefile, "write"):
             self.__fh = savefile
         else:
             raise ValueError("Unsupported type for 'savefile' argument")
 
         self.datalink = datalink
-        self.__fh.write(b"".join([
-            struct.pack("<I", PCAPH_MAGIC_NUM),
-            struct.pack("<H", PCAPH_VER_MAJOR),
-            struct.pack("<H", PCAPH_VER_MINOR),
-            struct.pack("<i", PCAPH_THISZONE),
-            struct.pack("<I", PCAPH_SIGFIGS),
-            struct.pack("<I", PCAPH_SNAPLEN),
-            struct.pack("<I", DLT_PPI if self.ppi else self.datalink)
-            ]))
+        self.__fh.write(
+            b"".join(
+                [
+                    struct.pack("<I", PCAPH_MAGIC_NUM),
+                    struct.pack("<H", PCAPH_VER_MAJOR),
+                    struct.pack("<H", PCAPH_VER_MINOR),
+                    struct.pack("<i", PCAPH_THISZONE),
+                    struct.pack("<I", PCAPH_SIGFIGS),
+                    struct.pack("<I", PCAPH_SNAPLEN),
+                    struct.pack("<I", DLT_PPI if self.ppi else self.datalink),
+                ]
+            )
+        )
 
     def __enter__(self):
         return self
@@ -144,10 +151,18 @@ class PcapDumper:
     def __exit__(self, *exinfo):
         self.close()
 
-    #TODO: fix freq_mhz for subGHz which end up as float
-    def pcap_dump(self, packet, ts_sec=None, ts_usec=None, orig_len=None, 
-                  freq_mhz = None, ant_dbm = None, location = None):
-        '''
+    # TODO: fix freq_mhz for subGHz which end up as float
+    def pcap_dump(
+        self,
+        packet,
+        ts_sec=None,
+        ts_usec=None,
+        orig_len=None,
+        freq_mhz=None,
+        ant_dbm=None,
+        location=None,
+    ):
+        """
         Appends a new packet to the libpcap file.  Optionally specify ts_sec
         and tv_usec for timestamp information, otherwise the current time is
         used.  Specify orig_len if your snaplen is smaller than the entire
@@ -166,35 +181,39 @@ class PcapDumper:
         @type packet: String
         @param packet: Packet contents
         @rtype: None
-        '''
+        """
 
         # Build CACE PPI headers if requested
         if self.ppi is True:
-            pph_len = 8 #ppi_header
+            pph_len = 8  # ppi_header
 
-            #CACE PPI Field 802.11-Common
-            pph_len += 24 #802.11-common header and data
+            # CACE PPI Field 802.11-Common
+            pph_len += 24  # 802.11-common header and data
             rf_freq_mhz = 0x0000
-            if freq_mhz is not None: rf_freq_mhz = int(freq_mhz) #TODO: fix for float
+            if freq_mhz is not None:
+                rf_freq_mhz = int(freq_mhz)  # TODO: fix for float
             rf_ant_dbm = 0
-            if ant_dbm is not None: rf_ant_dbm = ant_dbm
-            caceppi_f80211common = b"".join([
-                struct.pack("<H", DOT11COMMON_TAG), #2 = Field Type 802.11-Common
-                struct.pack("<H", 20),              #20 = 802.11-Common length in bytes
-                struct.pack("<Q", 0),               #FSF-Timer
-                struct.pack("<H", 0),               #Flags
-                struct.pack("<H", 0),               #Rate
-                struct.pack("<H", rf_freq_mhz),     #Channel-Freq
-                struct.pack("<H", 0x0080),          #Channel-Flags = 2GHz
-                struct.pack("<B", 0),               #FHSS-Hopset
-                struct.pack("<B", 0),               #FHSS-Pattern
-                struct.pack("<b", rf_ant_dbm),      #dBm-Ansignal
-                struct.pack("<b", 0)                #dBm-Antnoise
-                ])
+            if ant_dbm is not None:
+                rf_ant_dbm = ant_dbm
+            caceppi_f80211common = b"".join(
+                [
+                    struct.pack("<H", DOT11COMMON_TAG),  # 2 = Field Type 802.11-Common
+                    struct.pack("<H", 20),  # 20 = 802.11-Common length in bytes
+                    struct.pack("<Q", 0),  # FSF-Timer
+                    struct.pack("<H", 0),  # Flags
+                    struct.pack("<H", 0),  # Rate
+                    struct.pack("<H", rf_freq_mhz),  # Channel-Freq
+                    struct.pack("<H", 0x0080),  # Channel-Flags = 2GHz
+                    struct.pack("<B", 0),  # FHSS-Hopset
+                    struct.pack("<B", 0),  # FHSS-Pattern
+                    struct.pack("<b", rf_ant_dbm),  # dBm-Ansignal
+                    struct.pack("<b", 0),  # dBm-Antnoise
+                ]
+            )
 
-            #PPI-GEOLOCATION if information available
+            # PPI-GEOLOCATION if information available
             if location is not None:
-                pph_len += 24 #geolocation header and data length
+                pph_len += 24  # geolocation header and data length
                 (lon, lat, alt) = location
                 # Sanity checking on values of location data:
                 if lat > -180.00000005 and lat < 180.00000005:
@@ -210,25 +229,29 @@ class PcapDumper:
                 else:
                     raise Exception("Altitude value is out of expected range: %.8f" % alt)
                 # Build Geolocation PPI Header
-                caceppi_fgeolocation = b"".join([
-                    struct.pack("<H", GPS_TAG),  #2 = Field Type 802.11-Common
-                    struct.pack("<H", 20),       #20 = 802.11-Common length in bytes
-                    struct.pack("<B", 1),        #Geotag Version
-                    struct.pack("<B", 2),        #Geotag Pad
-                    struct.pack("<H", 24),       #Geotag Length
-                    struct.pack("<I", 0x0E),     #GPS fields (only lat, long, and alt for now)
-                    struct.pack("<I", lat_i),    #GPS Latitude
-                    struct.pack("<I", lon_i),    #GPS Longitude
-                    struct.pack("<I", alt_i),    #GPS Altitude
-                    ])
+                caceppi_fgeolocation = b"".join(
+                    [
+                        struct.pack("<H", GPS_TAG),  # 2 = Field Type 802.11-Common
+                        struct.pack("<H", 20),  # 20 = 802.11-Common length in bytes
+                        struct.pack("<B", 1),  # Geotag Version
+                        struct.pack("<B", 2),  # Geotag Pad
+                        struct.pack("<H", 24),  # Geotag Length
+                        struct.pack("<I", 0x0E),  # GPS fields (only lat, long, and alt for now)
+                        struct.pack("<I", lat_i),  # GPS Latitude
+                        struct.pack("<I", lon_i),  # GPS Longitude
+                        struct.pack("<I", alt_i),  # GPS Altitude
+                    ]
+                )
 
-            #CACE PPI Header
-            caceppi_hdr = b"".join([
-                struct.pack("<B", 0),		     #PPH version
-                struct.pack("<B", 0x00),         #PPH flags
-                struct.pack("<H", pph_len),	     #PPH len
-                struct.pack("<I", self.datalink) #Field
-                ])
+            # CACE PPI Header
+            caceppi_hdr = b"".join(
+                [
+                    struct.pack("<B", 0),  # PPH version
+                    struct.pack("<B", 0x00),  # PPH flags
+                    struct.pack("<H", pph_len),  # PPH len
+                    struct.pack("<I", self.datalink),  # Field
+                ]
+            )
 
         if ts_sec is None or ts_usec is None:
             now = time.time()
@@ -239,12 +262,14 @@ class PcapDumper:
         if orig_len == None:
             orig_len = plen
 
-        #Encapsulated packet header and packet
+        # Encapsulated packet header and packet
         # Record header is ts_sec | ts_usec | incl_len | orig_len
-        output_list = [ struct.pack("<I", ts_sec),
-                        struct.pack("<I", ts_usec),
-                        struct.pack("<I", plen),
-                        struct.pack("<I", orig_len) ]
+        output_list = [
+            struct.pack("<I", ts_sec),
+            struct.pack("<I", ts_usec),
+            struct.pack("<I", plen),
+            struct.pack("<I", orig_len),
+        ]
 
         if self.ppi is True:
             output_list[2] = struct.pack("<I", plen + pph_len)
@@ -255,7 +280,7 @@ class PcapDumper:
             output_list.append(caceppi_f80211common)
 
         output_list.append(packet)
-        output = b''.join(output_list)
+        output = b"".join(output_list)
 
         self.__fh.write(output)
         # Specially for handling FIFO needs:
@@ -264,17 +289,16 @@ class PcapDumper:
         except IOError as e:
             raise e
 
-
     def close(self):
-        '''
+        """
         Closes the output packet capture; wrapper for pcap_close().
         @rtype: None
-        '''
+        """
         self.pcap_close()
 
     def pcap_close(self):
-        '''
+        """
         Closed the output packet capture.
         @rtype: None
-        '''
+        """
         self.__fh.close()

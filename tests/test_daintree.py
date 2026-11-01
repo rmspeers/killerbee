@@ -30,13 +30,13 @@ class TestDaintree(unittest.TestCase):
         dt.close()
 
         with open(path_to_file) as f:
-            self.assertTrue('#Format=4' in f.readline())
-            self.assertTrue('# SNA v3.0.0.7 SUS:' in f.readline())
+            self.assertTrue("#Format=4" in f.readline())
+            self.assertTrue("# SNA v3.0.0.7 SUS:" in f.readline())
 
     def test_daintreedumper_pcap_dump(self):
         path_to_file = self._p("dump_pcap.dcf")
         dt = DainTreeDumper(path_to_file)
-        dt.pcap_dump(b'\x01\x02\x03', ts_sec=1, ts_usec=2, orig_len=3)
+        dt.pcap_dump(b"\x01\x02\x03", ts_sec=1, ts_usec=2, orig_len=3)
         dt.close()
         with open(path_to_file) as f:
             lines = f.read().splitlines()
@@ -45,8 +45,8 @@ class TestDaintree(unittest.TestCase):
     def test_daintreedumper_pwrite(self):
         path_to_file = self._p("dump_pwrite.dcf")
         dt = DainTreeDumper(path_to_file)
-        dt.pwrite(b'\xde\xad\xbe\xef', channel=11, rssi=5)
-        dt.pwrite(b'\x00')
+        dt.pwrite(b"\xde\xad\xbe\xef", channel=11, rssi=5)
+        dt.pwrite(b"\x00")
         dt.close()
         with open(path_to_file) as f:
             lines = f.read().splitlines()
@@ -61,7 +61,7 @@ class TestDaintree(unittest.TestCase):
     def test_daintreedumper_pwrite_no_handle(self):
         dt = DainTreeDumper(self._p("nohandle.dcf"))
         dt._fh = None
-        self.assertRaises(Exception, dt.pwrite, b'\x01')
+        self.assertRaises(Exception, dt.pwrite, b"\x01")
         self.assertRaises(Exception, dt.close)
 
     def test_daintreedumper_close(self):
@@ -71,7 +71,7 @@ class TestDaintree(unittest.TestCase):
 
         # handle is gone after close
         self.assertRaises(Exception, dt.close)
-        self.assertRaises(Exception, dt.pwrite, b'\x01')
+        self.assertRaises(Exception, dt.pwrite, b"\x01")
 
     def test_daintreereader_init(self):
         path_to_file = self._p("test_dt_read.dcf")
@@ -93,9 +93,12 @@ class TestDaintree(unittest.TestCase):
         dt = DainTreeReader(path_to_file)
         out = dt.pnext()
         self.assertAlmostEqual(1623766438.177813, out[0][0], places=3)
-        self.assertEqual(binascii.unhexlify(
-            "6188ccae287f2c370d48027f2c370d1e0128fd2cf005fabff7020188170000dd727c0549011bcc3828c1a65418d6ea52083257c363"),
-            out[1])
+        self.assertEqual(
+            binascii.unhexlify(
+                "6188ccae287f2c370d48027f2c370d1e0128fd2cf005fabff7020188170000dd727c0549011bcc3828c1a65418d6ea52083257c363"
+            ),
+            out[1],
+        )
         count = 1
         while True:
             out = dt.pnext()
@@ -111,7 +114,7 @@ class TestDaintree(unittest.TestCase):
             f.write(b"#Format=4\r\n# comment line\r\n1 1.5 2 0102 255 1 0 26 1 0 1 32767\r\n")
         dt = DainTreeReader(path)
         out = dt.pnext()
-        self.assertEqual(b'\x01\x02', out[1])
+        self.assertEqual(b"\x01\x02", out[1])
         self.assertEqual([None, None], dt.pnext())
         dt.close()
 
@@ -122,7 +125,7 @@ class TestDaintree(unittest.TestCase):
         dt = DainTreeReader(path)
         hdr, pkt = dt.pnext()
         self.assertEqual([1.5, 3, 3], hdr)
-        self.assertEqual(b'\xaa\xbb\xcc', pkt)
+        self.assertEqual(b"\xaa\xbb\xcc", pkt)
         dt.close()
 
     def test_daintree_close_releases_file(self):
@@ -139,10 +142,10 @@ class TestDaintree(unittest.TestCase):
     def test_roundtrip(self):
         path = self._p("roundtrip.dcf")
         dt = DainTreeDumper(path)
-        dt.pwrite(b'\x41\x88\x01\x02\x03')
+        dt.pwrite(b"\x41\x88\x01\x02\x03")
         dt.close()
         rd = DainTreeReader(path)
-        self.assertEqual(b'\x41\x88\x01\x02\x03', rd.pnext()[1])
+        self.assertEqual(b"\x41\x88\x01\x02\x03", rd.pnext()[1])
         rd.close()
 
 

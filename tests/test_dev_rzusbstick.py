@@ -79,13 +79,16 @@ def test_init_errors():
         RZUSBSTICK(FakeDev(fail_setup=True), None)
 
 
-@pytest.mark.parametrize("prod,caps", [
-    ("RZUSBSTICK", [KBCapabilities.BOOT, KBCapabilities.SNIFF]),
-    ("KILLERB001", [KBCapabilities.INJECT]),
-    ("KILLERB006", [KBCapabilities.INJECT, KBCapabilities.BOOT]),
-    ("KILLERB00T", [KBCapabilities.BOOT]),
-    ("OTHER", []),
-])
+@pytest.mark.parametrize(
+    "prod,caps",
+    [
+        ("RZUSBSTICK", [KBCapabilities.BOOT, KBCapabilities.SNIFF]),
+        ("KILLERB001", [KBCapabilities.INJECT]),
+        ("KILLERB006", [KBCapabilities.INJECT, KBCapabilities.BOOT]),
+        ("KILLERB00T", [KBCapabilities.BOOT]),
+        ("OTHER", []),
+    ],
+)
 def test_capabilities(prod, caps):
     d, _ = mk(prod)
     for c in caps:

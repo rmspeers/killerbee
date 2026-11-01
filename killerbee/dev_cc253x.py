@@ -2,24 +2,24 @@
 CC253x support is contributed by Scytmo.
 """
 
+import sys  # type: ignore
+import struct  # type: ignore
+import time  # type: ignore
+from datetime import datetime  # type: ignore
+from .kbutils import KBCapabilities, makeFCS, bytearray_to_bytes  # type: ignore
 
-import sys # type: ignore
-import struct # type: ignore
-import time # type: ignore
-from datetime import datetime # type: ignore
-from .kbutils import KBCapabilities, makeFCS, bytearray_to_bytes # type: ignore
+import usb.core  # type: ignore
+import usb.util  # type: ignore
 
-import usb.core # type: ignore
-import usb.util # type: ignore
 
 class CC253x:
-    USB_DIR_OUT        = 0x40
-    USB_DIR_IN         = 0xC0
-    USB_POWER_ON       = 0xC5
-    USB_POWER_STATUS   = 0xC6
-    USB_XFER_START     = 0xD0
-    USB_XFER_STOP      = 0xD1
-    USB_XFER_CHAN      = 0xD2
+    USB_DIR_OUT = 0x40
+    USB_DIR_IN = 0xC0
+    USB_POWER_ON = 0xC5
+    USB_POWER_STATUS = 0xC6
+    USB_XFER_START = 0xD0
+    USB_XFER_STOP = 0xD1
+    USB_XFER_CHAN = 0xD2
     USB_CC2530_DATA_EP = 0x82
     USB_CC2531_DATA_EP = 0x83
 
@@ -27,7 +27,7 @@ class CC253x:
     VARIANT_CC2531 = 1
 
     def __init__(self, dev, bus, variant):
-        #TODO deprecate bus param, and dev becomes a usb.core.Device object, not a string in pyUSB 1.x use
+        # TODO deprecate bus param, and dev becomes a usb.core.Device object, not a string in pyUSB 1.x use
         """
         Instantiates the KillerBee class for CC253x USB dongles.
         @type dev:   String
@@ -60,7 +60,6 @@ class CC253x:
                 for ep in intf:
                     if ep.bEndpointAddress == self._data_ep:
                         self._maxPacketSize = ep.wMaxPacketSize
-
 
     def close(self):
         if self.__stream_open == True:
@@ -110,10 +109,12 @@ class CC253x:
             self.set_channel(channel, page)
 
         # Enable power in 802.15.4 radio
-        self.dev.ctrl_transfer(CC253x.USB_DIR_OUT, CC253x.USB_POWER_ON, wIndex = 4)
+        self.dev.ctrl_transfer(CC253x.USB_DIR_OUT, CC253x.USB_POWER_ON, wIndex=4)
         while True:
             # check if powered up
-            power_status = self.dev.ctrl_transfer(CC253x.USB_DIR_IN, CC253x.USB_POWER_STATUS, data_or_wLength = 1)
+            power_status = self.dev.ctrl_transfer(
+                CC253x.USB_DIR_IN, CC253x.USB_POWER_STATUS, data_or_wLength=1
+            )
             if power_status[0] == 4:
                 break
             time.sleep(0.1)
@@ -141,8 +142,12 @@ class CC253x:
     def _do_set_channel(self):
         # Internal function to unconditionally set the channel in the hardware
         # For some CC253x dongles, this can only be done when the radio is powered up.
-        self.dev.ctrl_transfer(CC253x.USB_DIR_OUT, CC253x.USB_XFER_CHAN, wIndex = 0, data_or_wLength = [self._channel])
-        self.dev.ctrl_transfer(CC253x.USB_DIR_OUT, CC253x.USB_XFER_CHAN, wIndex = 1, data_or_wLength = [0x00])
+        self.dev.ctrl_transfer(
+            CC253x.USB_DIR_OUT, CC253x.USB_XFER_CHAN, wIndex=0, data_or_wLength=[self._channel]
+        )
+        self.dev.ctrl_transfer(
+            CC253x.USB_DIR_OUT, CC253x.USB_XFER_CHAN, wIndex=1, data_or_wLength=[0x00]
+        )
 
     # KillerBee expects the driver to implement this function
     def set_channel(self, channel, page=0):
@@ -163,9 +168,9 @@ class CC253x:
                 self._do_set_channel()
                 self.dev.ctrl_transfer(CC253x.USB_DIR_OUT, CC253x.USB_XFER_START)
         else:
-            raise Exception('Invalid channel')
+            raise Exception("Invalid channel")
         if page:
-            raise Exception('SubGHz not supported')
+            raise Exception("SubGHz not supported")
 
     # KillerBee expects the driver to implement this function
     def inject(self, packet, channel=None, count=1, delay=0, page=0):
@@ -183,7 +188,7 @@ class CC253x:
         @param delay: Delay between each frame, def=1
         @rtype: None
         """
-        raise Exception('Not yet implemented')
+        raise Exception("Not yet implemented")
 
     # KillerBee expects the driver to implement this function
     def pnext(self, timeout=100):
@@ -195,20 +200,20 @@ class CC253x:
         @return: Returns None is timeout expires and no packet received.  When a packet is received, a dictionary is returned with the keys bytes (string of packet bytes), validcrc (boolean if a vaid CRC), rssi (unscaled RSSI), and location (may be set to None). For backwards compatibility, keys for 0,1,2 are provided such that it can be treated as if a list is returned, in the form [ String: packet contents | Bool: Valid CRC | Int: Unscaled RSSI ]
         """
         if self.__stream_open == False:
-            self.sniffer_on() #start sniffing
+            self.sniffer_on()  # start sniffing
 
         ret = None
         framedata = bytearray()
-        explen = 0 # expected remaining packet length
+        explen = 0  # expected remaining packet length
         while True:
             pdata = None
             try:
                 pdata = self.dev.read(self._data_ep, self._maxPacketSize, timeout=timeout)
             except usb.core.USBError as e:
-                if e.errno not in (110, 60): #Operation timed out
+                if e.errno not in (110, 60):  # Operation timed out
                     print("Error args: {}".format(e.args))
                     raise e
-                    #TODO error handling enhancements for USB 1.0
+                    # TODO error handling enhancements for USB 1.0
                 else:
                     return None
 
@@ -216,7 +221,6 @@ class CC253x:
             framedata.extend(pdata)
 
             if len(pdata) < 64:
-
                 if len(pdata) < 2:
                     return None
 
@@ -227,7 +231,7 @@ class CC253x:
                 if framedata[0] != 0:
                     return None
 
-                payloadlen = framedata[7] # Includes TI format FCS
+                payloadlen = framedata[7]  # Includes TI format FCS
                 payload = framedata[8:]
 
                 if len(payload) != payloadlen:
@@ -241,17 +245,23 @@ class CC253x:
                 rssi = framedata[-2] - 73
                 # Dirty hack to compensate for possible RSSI overflow
                 if rssi > 255:
-                    rssi = 255 # assumed to be max, could also report error/0
+                    rssi = 255  # assumed to be max, could also report error/0
 
                 fcsx = framedata[-1]
                 # validcrc is the bit 7 in fcsx
-                validcrc  = (fcsx & 0x80) == 0x80
+                validcrc = (fcsx & 0x80) == 0x80
                 # correlation value is bits 0-6 in fcsx
-                correlation = fcsx & 0x7f
+                correlation = fcsx & 0x7F
 
-                ret = {1:validcrc, 2:rssi,
-                        'validcrc':validcrc, 'rssi':rssi, 'lqi':correlation,
-                        'dbm':rssi,'datetime':datetime.utcnow()}
+                ret = {
+                    1: validcrc,
+                    2: rssi,
+                    "validcrc": validcrc,
+                    "rssi": rssi,
+                    "lqi": correlation,
+                    "dbm": rssi,
+                    "datetime": datetime.utcnow(),
+                }
 
                 # Convert the framedata to a string for the return value, and replace the TI FCS with a real FCS
                 # if the radio told us that the FCS had passed validation.
@@ -259,9 +269,8 @@ class CC253x:
                     ret[0] = bytearray_to_bytes(payload[:-2]) + makeFCS(payload[:-2])
                 else:
                     ret[0] = bytearray_to_bytes(payload)
-                ret['bytes'] = ret[0]
+                ret["bytes"] = ret[0]
                 return ret
-
 
     def jammer_on(self, channel=None, page=0, method=None):
         """
@@ -272,13 +281,13 @@ class CC253x:
         @param page: Sets the subghz page, not supported on this device
         @rtype: None
         """
-        raise Exception('Not yet implemented')
+        raise Exception("Not yet implemented")
 
     def set_sync(self, sync=0xA7):
         """
         Set the register controlling the 802.15.4 PHY sync byte.
         """
-        raise Exception('Not yet implemented')
+        raise Exception("Not yet implemented")
 
     def jammer_off(self):
         """
@@ -286,4 +295,4 @@ class CC253x:
         @return: None
         @rtype: None
         """
-        raise Exception('Not yet implemented')
+        raise Exception("Not yet implemented")

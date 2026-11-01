@@ -34,8 +34,10 @@ class Sniffer:
     def page(self):
         if self.broken_page:
             return "nothing here"
-        return "Firmware version %s <!--#pindex-->%s,00:1a:b6:00:0a:a4,10.10.10.2,%d,High,0x0000,OFF,0,0" % (
-            self.fw, "RUNNING" if self.running else "STOPPED", self.chan)
+        return (
+            "Firmware version %s <!--#pindex-->%s,00:1a:b6:00:0a:a4,10.10.10.2,%d,High,0x0000,OFF,0,0"
+            % (self.fw, "RUNNING" if self.running else "STOPPED", self.chan)
+        )
 
     def request(self, method, url):
         if self.fail:
@@ -260,12 +262,16 @@ def test_pnext_unknown_zep_type(env):
 def test_pnext_dbm(env, monkeypatch, rssi, dbm):
     d = mk(env)
     d.sniffer_on()
-    monkeypatch.setattr(SEWIO, "_SEWIO__parse_zep_v2",
-                        staticmethod(lambda data: (b"f", 11, True, rssi, 1, None)))
+    monkeypatch.setattr(
+        SEWIO, "_SEWIO__parse_zep_v2", staticmethod(lambda data: (b"f", 11, True, rssi, 1, None))
+    )
     d.handle.queue = [(b"x", (IP, 1))]
     assert d.pnext()["dbm"] == dbm
 
 
-@pytest.mark.parametrize("chan,mod", [(11, "0"), (26, "0"), (1, "c"), (10, "c"), (128, "1c"), (131, "1c"), (0, "0"), (50, None)])
+@pytest.mark.parametrize(
+    "chan,mod",
+    [(11, "0"), (26, "0"), (1, "c"), (10, "c"), (128, "1c"), (131, "1c"), (0, "0"), (50, None)],
+)
 def test_default_modulation(chan, mod):
     assert SEWIO._SEWIO__get_default_modulation(chan) == mod

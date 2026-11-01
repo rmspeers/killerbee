@@ -8,15 +8,7 @@ from zigbee_crypt import *
 
 ZBEE_SEC_ENC_MIC_32 = 0x5  #: ZigBee Seecurity Level id 5; Encrypted, 4 byte MIC
 
-APS_CMD = [
-    "Unknown",
-    "SKKE 1",
-    "SKKE 2",
-    "SKKE 3",
-    "SKKE 4",
-    "Transport Key",
-    "Update Device"
-]
+APS_CMD = ["Unknown", "SKKE 1", "SKKE 2", "SKKE 3", "SKKE 4", "Transport Key", "Update Device"]
 
 KEY_TYPE = [
     "Trust Center",
@@ -24,18 +16,18 @@ KEY_TYPE = [
     "Application Master",
     "Aplication Link",
     "Trust Link",
-    "High Security Network"
+    "High Security Network",
 ]
 
 
-def bytestohex(b, sep=':'):
+def bytestohex(b, sep=":"):
     """
     Convert bytes b to hex string using sep value as a delimiter.
     This is what Python 3.8 `hex(bytes_per_sep)` does
     """
-    assert(type(b) == bytes)
+    assert type(b) == bytes
     bstr = b.hex()
-    return sep.join([bstr[i:i+2] for i in range(0, len(bstr), 2)])
+    return sep.join([bstr[i : i + 2] for i in range(0, len(bstr), 2)])
 
 
 def sniffApsTransportKey(pkts, verbose=False):
@@ -44,55 +36,61 @@ def sniffApsTransportKey(pkts, verbose=False):
     """
     pcount = 0
 
-    if (verbose):
+    if verbose:
         print("Searching packets for APS_CMD_TRANSPORT_KEY")
 
     for p in pkts:
         pcount += 1
 
         if not (p.haslayer("ZigbeeAppCommandPayload")):
-            if (verbose):
+            if verbose:
                 print(f"Skipping packet {pcount}; no APS CMD payload")
             continue
 
-        if (verbose):
+        if verbose:
             print(f"Searching packet {pcount} for APS CMD identifier Transport Key (0x05)")
 
         appcmd = p.getlayer("ZigbeeAppCommandPayload")
 
-        if (appcmd.cmd_identifier == 5 and appcmd.key_type == 1):
-
+        if appcmd.cmd_identifier == 5 and appcmd.key_type == 1:
             keystr = bytestohex(appcmd.key)
             wiresharkkeystr = bytestohex(appcmd.key[::-1])
-            destaddrstr = bytestohex(appcmd.dest_addr.to_bytes(8, 'big'))
-            srcaddrstr = bytestohex(appcmd.src_addr.to_bytes(8, 'big'))
+            destaddrstr = bytestohex(appcmd.dest_addr.to_bytes(8, "big"))
+            srcaddrstr = bytestohex(appcmd.src_addr.to_bytes(8, "big"))
 
             print(f"[+] Network Key: {keystr}")
             print(f"      Wireshark: {wiresharkkeystr}")
             print(f"      Dest Addr: {destaddrstr}")
             print(f"       Src Addr: {srcaddrstr}")
         else:
-            if (verbose):
+            if verbose:
                 print(f"Packet {pcount} lacks transport key identifier")
 
 
 def sniffAppDataKey(pkts, key, verbose):
     addrMap = dict()
-    keyHash = sec_key_hash(key, '\0')
+    keyHash = sec_key_hash(key, "\0")
 
     for p in pkts:
-        if (p.haslayer("ZigbeeNWK")):
+        if p.haslayer("ZigbeeNWK"):
             nwk = p.getlayer("ZigbeeNWK")
             if nwk.source is not None and nwk.ext_src is not None:
                 if not nwk.source in addrMap and verbose:
-                    print(("[+] Extended Source: " + ":".join("{:02x}".format(ord(ch)) for ch in raw(nwk)[8:16]) + " mapped to " + hex(nwk.source)))
+                    print(
+                        (
+                            "[+] Extended Source: "
+                            + ":".join("{:02x}".format(ord(ch)) for ch in raw(nwk)[8:16])
+                            + " mapped to "
+                            + hex(nwk.source)
+                        )
+                    )
                 addrMap[nwk.source] = raw(nwk)[8:16]
-            if (p.haslayer("ZigbeeSecurityHeader") and p.haslayer("ZigbeeAppDataPayload")):
+            if p.haslayer("ZigbeeSecurityHeader") and p.haslayer("ZigbeeAppDataPayload"):
                 sec = p.getlayer("ZigbeeSecurityHeader")
                 if sec.key_type < 6:
                     if nwk.source in addrMap:
                         data = raw(p.getlayer("ZigbeeAppDataPayload"))
-                        scf = (ord(data[2]) & ~ ZBEE_SEC_ENC_MIC_32) | ZBEE_SEC_ENC_MIC_32
+                        scf = (ord(data[2]) & ~ZBEE_SEC_ENC_MIC_32) | ZBEE_SEC_ENC_MIC_32
                         a = data[0:2] + chr(scf) + data[3:7]
                         c = data[7:-4]
                         mic = data[-4:]
@@ -104,7 +102,10 @@ def sniffAppDataKey(pkts, key, verbose):
                                 print("    APS Command: {}".format(APS_CMD[ord(decrypted[0])]))
                             if ord(decrypted[1]) < len(KEY_TYPE):
                                 print("    Key Type: {}".format(KEY_TYPE[ord(decrypted[1])]))
-                            print("    Value: " + ":".join("{:02x}".format(ord(ch)) for ch in decrypted[2:18]))
+                            print(
+                                "    Value: "
+                                + ":".join("{:02x}".format(ord(ch)) for ch in decrypted[2:18])
+                            )
                         else:
                             print("[-] Decrypt failed - Wrong Key ???")
                     else:
@@ -113,21 +114,32 @@ def sniffAppDataKey(pkts, key, verbose):
                     print("[-] Unexpected key_type {}".format(sec.key_type))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Define the command line options.
-    parser = OptionParser(description="zbdsniff: Decode plaintext Zigbee Network key from a " +
-        "capture file. Will process libpcap capture files. Original concept: " +
-        "jwright@willhackforsushi.com, re-implemented using Scapy by Steve Martin.")
+    parser = OptionParser(
+        description="zbdsniff: Decode plaintext Zigbee Network key from a "
+        + "capture file. Will process libpcap capture files. Original concept: "
+        + "jwright@willhackforsushi.com, re-implemented using Scapy by Steve Martin."
+    )
     parser.add_option("-f", "--file", dest="filename", help="PCap file to process", metavar="FILE")
-    parser.add_option("-d", "--dir", dest="directory",
-                      help="Directory of PCap files to process", metavar="DIR")
-    parser.add_option("-k", "--transport-key", dest="transportKey", help="Transport Key for decryption")
-    parser.add_option("-v", "--verbose", action="store_true", dest="verbose", default=False,
-                      help="Print detailed status messages to stdout")
+    parser.add_option(
+        "-d", "--dir", dest="directory", help="Directory of PCap files to process", metavar="DIR"
+    )
+    parser.add_option(
+        "-k", "--transport-key", dest="transportKey", help="Transport Key for decryption"
+    )
+    parser.add_option(
+        "-v",
+        "--verbose",
+        action="store_true",
+        dest="verbose",
+        default=False,
+        help="Print detailed status messages to stdout",
+    )
 
     (options, args) = parser.parse_args()
 
-    if (not options.filename and not options.directory):
+    if not options.filename and not options.directory:
         print("A packet capture file or directory must be specified")
         sys.exit(1)
 
@@ -141,7 +153,7 @@ if __name__ == '__main__':
     for fname in files:
         print("Processing {}".format(fname))
         if not os.path.exists(str(fname)):
-            print("ERROR: Input file \"{}\" does not exist.".format(fname), file=sys.stderr)
+            print('ERROR: Input file "{}" does not exist.'.format(fname), file=sys.stderr)
             sys.exit(1)
 
         filecount += 1
@@ -149,10 +161,15 @@ if __name__ == '__main__':
             pkts = kbrdpcap(fname)
         except Exception as e:
             print("Exception: ", e)
-            print("ERROR: Input file \"{}\" is not able to be loaded. Is it a PCAP file? Daintree support was removed in KillerBee 2.7.1".format(fname), file=sys.stderr)
+            print(
+                'ERROR: Input file "{}" is not able to be loaded. Is it a PCAP file? Daintree support was removed in KillerBee 2.7.1'.format(
+                    fname
+                ),
+                file=sys.stderr,
+            )
             continue
 
-        if (options.transportKey):
+        if options.transportKey:
             sniffAppDataKey(pkts, options.transportKey, options.verbose)
 
         sniffApsTransportKey(pkts, options.verbose)

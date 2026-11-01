@@ -9,14 +9,15 @@ Bumblebee firmware provides 2.4GHz sniffing and injection capabilities,
 with RSSI/LQI. Bad FCS sniffing and jamming are not currently supported.
 """
 
-import struct # type: ignore
-import time # type: ignore
-from array import array # type: ignore
-from datetime import datetime # type: ignore
-from .kbutils import KBCapabilities, makeFCS, bytearray_to_bytes # type: ignore
+import struct  # type: ignore
+import time  # type: ignore
+from array import array  # type: ignore
+from datetime import datetime  # type: ignore
+from .kbutils import KBCapabilities, makeFCS, bytearray_to_bytes  # type: ignore
 
-import usb.core # type: ignore
-import usb.util # type: ignore
+import usb.core  # type: ignore
+import usb.util  # type: ignore
+
 
 class CommProtocolPacket(object):
     """
@@ -40,6 +41,7 @@ class CommProtocolPacket(object):
         """
         return self.__data
 
+
 class Bumblebee(object):
     """
     Bumblebee driver class.
@@ -62,7 +64,6 @@ class Bumblebee(object):
     CMD_SNIFF_OFF_ACK = 0x09
     CMD_GOT_PKT = 0x0A
 
-
     def __init__(self, dev, bus):
         """
         Initialize device and capabilities.
@@ -70,7 +71,7 @@ class Bumblebee(object):
 
         self.dev = dev
         self.rx_buffer = bytes()
-        self.usb_rx_buffer = array('B', b'\x00'*256)
+        self.usb_rx_buffer = array("B", b"\x00" * 256)
         self._channel = None
         self.__stream_open = False
         self.timeout = 2.0
@@ -88,39 +89,38 @@ class Bumblebee(object):
         """
         # Did we receive some data ?
         if len(self.rx_buffer) > 0:
-
             pkt_len = self.rx_buffer[0]
 
             # Loop on received packets and yield CommProtocolPacket objects
             while (len(self.rx_buffer) >= pkt_len) and (pkt_len > 0):
                 # Extract payload
-                payload = self.rx_buffer[1:pkt_len-1]
-                
+                payload = self.rx_buffer[1 : pkt_len - 1]
+
                 # Extract CRC
-                crc = self.rx_buffer[pkt_len-1]
+                crc = self.rx_buffer[pkt_len - 1]
 
                 # Check CRC
-                if crc == self.crc(self.rx_buffer[:pkt_len-1]):
+                if crc == self.crc(self.rx_buffer[: pkt_len - 1]):
                     # Chomp packet
                     self.rx_buffer = self.rx_buffer[pkt_len:]
 
                     # Yield packet
-                    yield CommProtocolPacket(payload[0], payload[1:]) 
+                    yield CommProtocolPacket(payload[0], payload[1:])
                 else:
                     # Chomp packet
                     self.rx_buffer = self.rx_buffer[pkt_len:]
 
-                # Process next packet if any
+                # Process next packet if any
                 if len(self.rx_buffer) > 0:
-                  pkt_len = self.rx_buffer[0]
+                    pkt_len = self.rx_buffer[0]
                 else:
-                  pkt_len = 0
+                    pkt_len = 0
 
     def crc(self, x):
         """
         Compute CRC (sort of ;) for a given byte array.
         """
-        c=0xff
+        c = 0xFF
         for i in x:
             c ^= i
         return c
@@ -130,14 +130,14 @@ class Bumblebee(object):
         Read incoming data and fill RX buffer.
         """
         try:
-          nbytes = self.dev.read(Bumblebee.EP_IN, self.usb_rx_buffer, 100)
-          if nbytes > 0:
-            self.rx_buffer += self.usb_rx_buffer.tobytes()[:nbytes]
+            nbytes = self.dev.read(Bumblebee.EP_IN, self.usb_rx_buffer, 100)
+            if nbytes > 0:
+                self.rx_buffer += self.usb_rx_buffer.tobytes()[:nbytes]
         except usb.core.USBError as e:
-            if e.errno not in (110, 60): #Operation timed out
+            if e.errno not in (110, 60):  # Operation timed out
                 print("Error args: {}".format(e.args))
                 raise e
-                #TODO error handling enhancements for USB 1.0
+                # TODO error handling enhancements for USB 1.0
             else:
                 return None
 
@@ -146,18 +146,18 @@ class Bumblebee(object):
         Send a message to our dongle.
         """
         length = len(data) + 3
-        buf = struct.pack('<BB', length, command) + data
-        buf += bytes([ self.crc(buf) ])
+        buf = struct.pack("<BB", length, command) + data
+        buf += bytes([self.crc(buf)])
 
         # Cut buffer in blocks of 64 bytes
-        nbulks = int(len(buf)/64)
-        if nbulks*64 < len(buf):
-          nbulks += 1
+        nbulks = int(len(buf) / 64)
+        if nbulks * 64 < len(buf):
+            nbulks += 1
 
-        # Send each bulk separately
-        sent=0
+        # Send each bulk separately
+        sent = 0
         for i in range(nbulks):
-          sent += self.dev.write(Bumblebee.EP_OUT, buf[i*64:(i+1)*64])
+            sent += self.dev.write(Bumblebee.EP_OUT, buf[i * 64 : (i + 1) * 64])
 
         # Return total number of bytes sent
         return sent
@@ -168,45 +168,29 @@ class Bumblebee(object):
         FCS must not be provided, only packet data. Also, no need to add two
         bytes at the end of the packet to insert FCS.
         """
-        self.send_message(
-          Bumblebee.CMD_SEND_PKT,
-          packet
-        )
+        self.send_message(Bumblebee.CMD_SEND_PKT, packet)
         return self.wait_for_ack(Bumblebee.CMD_SEND_PKT_ACK)
-
 
     def _do_set_channel(self):
         """
         Set channel for our dongle.
         """
-        self.send_message(
-          Bumblebee.CMD_SET_CHANNEL,
-          bytes([ self._channel ])
-        )
+        self.send_message(Bumblebee.CMD_SET_CHANNEL, bytes([self._channel]))
         return self.wait_for_ack(Bumblebee.CMD_SET_CHANNEL_ACK)
-
 
     def _do_sniffer_on(self):
         """
         Enable sniffer
         """
-        self.send_message(
-          Bumblebee.CMD_SNIFF_ON,
-          bytes([])
-        )
+        self.send_message(Bumblebee.CMD_SNIFF_ON, bytes([]))
         return self.wait_for_ack(Bumblebee.CMD_SNIFF_ON_ACK)
-
 
     def _do_sniffer_off(self):
         """
         Disable sniffer
         """
-        self.send_message(
-          Bumblebee.CMD_SNIFF_OFF,
-          bytes([])
-        )
+        self.send_message(Bumblebee.CMD_SNIFF_OFF, bytes([]))
         return self.wait_for_ack(Bumblebee.CMD_SNIFF_OFF_ACK)
-
 
     def wait_for_ack(self, command_ack):
         """
@@ -219,16 +203,15 @@ class Bumblebee(object):
 
             # Check packets
             for pkt in self.process_packet():
-              if pkt.get_command() == command_ack:
-                return True
+                if pkt.get_command() == command_ack:
+                    return True
 
             # Timeout expired ?
             if (time.time() - entry_time) >= self.timeout:
-              return False
+                return False
 
             # Wait a bit
             time.sleep(0.1)
-
 
     def close(self):
         """
@@ -281,12 +264,12 @@ class Bumblebee(object):
         if self.dev is not None:
             if channel is not None:
                 self.set_channel(channel, page)
-            
+
             # Enable sniffer
             self._do_sniffer_on()
             self.__stream_open = True
         else:
-            raise Exception('Device not connected')
+            raise Exception("Device not connected")
 
     # KillerBee expects the driver to implement this function
     def sniffer_off(self):
@@ -300,7 +283,7 @@ class Bumblebee(object):
             self._do_sniffer_off()
             self.__stream_open = False
         else:
-            raise Exception('Device not connected')
+            raise Exception("Device not connected")
 
     # KillerBee expects the driver to implement this function
     def set_channel(self, channel, page=0):
@@ -319,10 +302,9 @@ class Bumblebee(object):
             if self.dev is not None:
                 self._do_set_channel()
         else:
-            raise Exception('Invalid channel')
+            raise Exception("Invalid channel")
         if page:
-            raise Exception('SubGHz not supported')
-
+            raise Exception("SubGHz not supported")
 
     # KillerBee expects the driver to implement this function
     def inject(self, packet, channel=None, count=1, delay=0, page=0):
@@ -341,9 +323,9 @@ class Bumblebee(object):
         @rtype: None
         """
         if len(packet) < 1:
-            raise Exception('Empty packet')
-        if len(packet) > 125:                   # 127 - 2 to accommodate FCS
-            raise Exception('Packet too long')
+            raise Exception("Empty packet")
+        if len(packet) > 125:  # 127 - 2 to accommodate FCS
+            raise Exception("Packet too long")
 
         if channel != None:
             self.set_channel(channel, page)
@@ -362,12 +344,12 @@ class Bumblebee(object):
         @return: Returns None is timeout expires and no packet received.  When a packet is received, a dictionary is returned with the keys bytes (string of packet bytes), validcrc (boolean if a vaid CRC), rssi (unscaled RSSI), and location (may be set to None). For backwards compatibility, keys for 0,1,2 are provided such that it can be treated as if a list is returned, in the form [ String: packet contents | Bool: Valid CRC | Int: Unscaled RSSI ]
         """
         if self.__stream_open == False:
-            self.sniffer_on() #start sniffing
+            self.sniffer_on()  # start sniffing
 
         # Fetch incoming data
         self.process_rx()
 
-        # Loop on all received packets
+        # Loop on all received packets
         for packet in self.process_packet():
             if packet.get_command() != Bumblebee.CMD_GOT_PKT:
                 continue
@@ -376,13 +358,19 @@ class Bumblebee(object):
             # CC2531 only allow (for the moment) to capture packets with valid CRC
             validcrc = True
 
-            # Extract RSSI and LQI from payload buffer.
-            rssi = struct.unpack('<b', bytes([payload[0]]))[0]
-            correlation = struct.unpack('<b', bytes([payload[1]]))[0]
+            # Extract RSSI and LQI from payload buffer.
+            rssi = struct.unpack("<b", bytes([payload[0]]))[0]
+            correlation = struct.unpack("<b", bytes([payload[1]]))[0]
 
-            ret = {1:validcrc, 2:rssi,
-                        'validcrc':validcrc, 'rssi':rssi, 'lqi':correlation,
-                        'dbm':rssi,'datetime':datetime.utcnow()}
+            ret = {
+                1: validcrc,
+                2: rssi,
+                "validcrc": validcrc,
+                "rssi": rssi,
+                "lqi": correlation,
+                "dbm": rssi,
+                "datetime": datetime.utcnow(),
+            }
 
             # Convert the framedata to a string for the return value, and replace the TI FCS with a real FCS
             # if the radio told us that the FCS had passed validation.
@@ -390,7 +378,7 @@ class Bumblebee(object):
                 ret[0] = bytearray_to_bytes(payload[2:]) + makeFCS(payload[2:])
             else:
                 ret[0] = bytearray_to_bytes(payload)
-            ret['bytes'] = ret[0]
+            ret["bytes"] = ret[0]
             return ret
 
     def jammer_on(self, channel=None, page=0):
@@ -402,13 +390,13 @@ class Bumblebee(object):
         @param page: Sets the subghz page, not supported on this device
         @rtype: None
         """
-        raise Exception('Not yet implemented')
+        raise Exception("Not yet implemented")
 
     def set_sync(self, sync=0xA7):
         """
         Set the register controlling the 802.15.4 PHY sync byte.
         """
-        raise Exception('Not yet implemented')
+        raise Exception("Not yet implemented")
 
     def jammer_off(self, channel=None, page=0):
         """
@@ -416,4 +404,4 @@ class Bumblebee(object):
         @return: None
         @rtype: None
         """
-        raise Exception('Not yet implemented')
+        raise Exception("Not yet implemented")

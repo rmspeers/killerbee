@@ -3,8 +3,9 @@ from typing import Optional, Dict, Union, Any, List
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from .kbutils import KBCapabilities, makeFCS 
+from .kbutils import KBCapabilities, makeFCS
 from .GoodFETCCSPI import GoodFETCCSPI
+
 
 class APIMOTE:
     def __init__(self, dev: str) -> None:
@@ -43,7 +44,7 @@ class APIMOTE:
         return
 
     def close(self) -> None:
-        
+
         if self.handle is None:
             raise Exception("Handle does not exist")
 
@@ -58,9 +59,9 @@ class APIMOTE:
     def get_dev_info(self) -> List[Union[str, Any]]:
         return [self.dev, "GoodFET Apimote", ""]
 
-    def sniffer_on(self, channel: Optional[int]=None, page: int=0) -> None:
+    def sniffer_on(self, channel: Optional[int] = None, page: int = 0) -> None:
         self.capabilities.require(KBCapabilities.SNIFF)
-        
+
         if self.handle is None:
             raise Exception("Handle does not exist")
 
@@ -68,13 +69,13 @@ class APIMOTE:
             pass
         else:
             self.set_channel(channel, page)
-        
+
         self.__stream_open = True
 
     def sniffer_off(self) -> None:
         self.__stream_open = False
 
-    def set_channel(self, channel: int, page: int=0) -> None:
+    def set_channel(self, channel: int, page: int = 0) -> None:
         self.capabilities.require(KBCapabilities.SETCHAN)
 
         if self.handle is None:
@@ -83,26 +84,32 @@ class APIMOTE:
         if 11 <= channel <= 26:
             self._channel = channel
         else:
-            raise Exception('Invalid channel')
+            raise Exception("Invalid channel")
 
-    def inject(self, packet: bytes, channel: Optional[int]=None, count: int=1, delay: int=0, page: int=0) -> None:
+    def inject(
+        self,
+        packet: bytes,
+        channel: Optional[int] = None,
+        count: int = 1,
+        delay: int = 0,
+        page: int = 0,
+    ) -> None:
         self.capabilities.require(KBCapabilities.INJECT)
 
         if self.handle is None:
             raise Exception("Handle does not exist")
 
-
         if len(packet) < 1:
-            raise Exception('Empty packet')
-        if len(packet) > 125:                   # 127 - 2 to accommodate FCS
-            raise Exception('Packet too long')
+            raise Exception("Empty packet")
+        if len(packet) > 125:  # 127 - 2 to accommodate FCS
+            raise Exception("Packet too long")
 
         if channel is None:
             pass
         else:
             self.set_channel(channel, page)
 
-    def pnext(self, timeout: int=100) -> Any:
+    def pnext(self, timeout: int = 100) -> Any:
         self.capabilities.require(KBCapabilities.SNIFF)
 
         if self.handle is None:
@@ -123,26 +130,28 @@ class APIMOTE:
                 validcrc = True
 
         result: Dict[Union[int, str], Any] = {
-            0: frame, 
-            1: validcrc, 
-            2: rssi, 
-            'bytes': frame, 
-            'validcrc': validcrc, 
-            'rssi': rssi, 
-            'location': None,
-            'datetime': datetime.now(timezone.utc)
+            0: frame,
+            1: validcrc,
+            2: rssi,
+            "bytes": frame,
+            "validcrc": validcrc,
+            "rssi": rssi,
+            "location": None,
+            "datetime": datetime.now(timezone.utc),
         }
         if rssi is None:
-            result['dbm'] = None
+            result["dbm"] = None
         else:
-            result['dbm'] = rssi - 45
+            result["dbm"] = rssi - 45
 
         return result
- 
-    def ping(self, da: Any, panid: Any, sa: Any, channel: Optional[int]=None, page: int=0) -> None:
-        raise Exception('Not yet implemented')
 
-    def jammer_on(self, channel: Optional[int]=None, page: int=0) -> None:
+    def ping(
+        self, da: Any, panid: Any, sa: Any, channel: Optional[int] = None, page: int = 0
+    ) -> None:
+        raise Exception("Not yet implemented")
+
+    def jammer_on(self, channel: Optional[int] = None, page: int = 0) -> None:
         self.capabilities.require(KBCapabilities.PHYJAM_REFLEX)
 
         if self.handle is None:
@@ -153,12 +162,11 @@ class APIMOTE:
         else:
             self.set_channel(channel, page)
 
-    def set_sync(self, sync: int=0xA70F) -> Any:
+    def set_sync(self, sync: int = 0xA70F) -> Any:
         self.capabilities.require(KBCapabilities.SET_SYNC)
 
         if self.handle is None:
             raise Exception("Handle does not exist")
 
-    def jammer_off(self, channel: Optional[int]=None, page: int=0) -> None:
-        raise Exception('Not yet implemented')
-
+    def jammer_off(self, channel: Optional[int] = None, page: int = 0) -> None:
+        raise Exception("Not yet implemented")

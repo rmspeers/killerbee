@@ -4,22 +4,23 @@ DEFAULT_KB_CHANNEL: int = 11
 DEFAULT_KB_PAGE: Optional[int] = None
 DEFAULT_KB_DEVICE: Optional[int] = None
 
-from scapy.config import conf # type: ignore
-setattr(conf, 'killerbee_channel', DEFAULT_KB_CHANNEL)
-setattr(conf, 'killerbee_page', DEFAULT_KB_PAGE)
-setattr(conf, 'killerbee_device', DEFAULT_KB_DEVICE)
-setattr(conf, 'killerbee_nkey', None)
-from scapy import plist # type: ignore
-from scapy.base_classes import SetGen # type: ignore
-from scapy.packet import Gen, Raw # type: ignore
-from scapy.all import Dot15d4 # type: ignore
-from scapy.all import Dot15d4FCS # type: ignore
-from scapy.all import PcapWriter # type: ignore
-from scapy.all import ZigbeeSecurityHeader # type: ignore
-from scapy.all import ZigbeeNWK # type: ignore
-from scapy.all import ZigbeeAppDataPayload # type: ignore
-from scapy.all import ZigbeeNWKCommandPayload # type: ignore
-from scapy.all import Packet # type: ignore
+from scapy.config import conf  # type: ignore
+
+setattr(conf, "killerbee_channel", DEFAULT_KB_CHANNEL)
+setattr(conf, "killerbee_page", DEFAULT_KB_PAGE)
+setattr(conf, "killerbee_device", DEFAULT_KB_DEVICE)
+setattr(conf, "killerbee_nkey", None)
+from scapy import plist  # type: ignore
+from scapy.base_classes import SetGen  # type: ignore
+from scapy.packet import Gen, Raw  # type: ignore
+from scapy.all import Dot15d4  # type: ignore
+from scapy.all import Dot15d4FCS  # type: ignore
+from scapy.all import PcapWriter  # type: ignore
+from scapy.all import ZigbeeSecurityHeader  # type: ignore
+from scapy.all import ZigbeeNWK  # type: ignore
+from scapy.all import ZigbeeAppDataPayload  # type: ignore
+from scapy.all import ZigbeeNWKCommandPayload  # type: ignore
+from scapy.all import Packet  # type: ignore
 
 # This line will allow KillerBee's pcap reader to overwrite scapy's reader that is imported on the
 # above line, per suggestion from cutaway at https://code.google.com/p/killerbee/issues/detail?id=28:
@@ -30,12 +31,26 @@ import os, time, struct
 from .kbutils import randmac
 
 import logging
-log_killerbee = logging.getLogger('scapy.killerbee')
+
+log_killerbee = logging.getLogger("scapy.killerbee")
 
 # new scapy needs to know if we're using sixlowpan or zigbee
 conf.dot15d4_protocol = "zigbee"
 
-def __kb_send(kb: KillerBee, x: Union[str, Gen], channel: Optional[int]=None, page: int=0, inter: int=0, loop: int=0, count: Optional[int]=None, verbose: Optional[int]=None, realtime: Optional[int]=None, *args: Any, **kargs: Any) -> int:
+
+def __kb_send(
+    kb: KillerBee,
+    x: Union[str, Gen],
+    channel: Optional[int] = None,
+    page: int = 0,
+    inter: int = 0,
+    loop: int = 0,
+    count: Optional[int] = None,
+    verbose: Optional[int] = None,
+    realtime: Optional[int] = None,
+    *args: Any,
+    **kargs: Any,
+) -> int:
     if type(x) is str:
         x = Raw(load=x)
     if not isinstance(x, Gen):
@@ -60,15 +75,17 @@ def __kb_send(kb: KillerBee, x: Union[str, Gen], channel: Optional[int]=None, pa
                 if realtime:
                     ct = time.time()
                     if dt0:
-                        st = dt0+p.time-ct
+                        st = dt0 + p.time - ct
                         if st > 0:
                             time.sleep(st)
                     else:
-                        dt0 = ct-p.time
-                kb.inject(p.do_build()[:-2], channel = None, count = 1, delay = 0, page = 0)  # [:-2] because the firmware adds the FCS
+                        dt0 = ct - p.time
+                kb.inject(
+                    p.do_build()[:-2], channel=None, count=1, delay=0, page=0
+                )  # [:-2] because the firmware adds the FCS
                 n += 1
                 if verbose:
-                    os.write(1,b".")
+                    os.write(1, b".")
                 time.sleep(inter)
             if passes > 0:
                 passes -= 1
@@ -76,10 +93,20 @@ def __kb_send(kb: KillerBee, x: Union[str, Gen], channel: Optional[int]=None, pa
         pass
     return n
 
-def __kb_recv(kb: KillerBee, count: int=0, store: int=1, prn: Optional[Any]=None, lfilter: Optional[Any]=None, stop_filter: Optional[Any]=None, verbose: Optional[int]=None, timeout: Optional[int]=None) -> List[bytes]:
+
+def __kb_recv(
+    kb: KillerBee,
+    count: int = 0,
+    store: int = 1,
+    prn: Optional[Any] = None,
+    lfilter: Optional[Any] = None,
+    stop_filter: Optional[Any] = None,
+    verbose: Optional[int] = None,
+    timeout: Optional[int] = None,
+) -> List[bytes]:
     kb.sniffer_on()
     if timeout is not None:
-        stoptime = time.time()+timeout
+        stoptime = time.time() + timeout
     if verbose is None:
         verbose = conf.verb
 
@@ -89,12 +116,13 @@ def __kb_recv(kb: KillerBee, count: int=0, store: int=1, prn: Optional[Any]=None
     while 1:
         try:
             if timeout is not None:
-                remain = stoptime-time.time()
+                remain = stoptime - time.time()
                 if remain <= 0:
                     break
 
-            packet: Any = kb.pnext() # int(remain * 1000) to convert to seconds
-            if packet is None: continue
+            packet: Any = kb.pnext()  # int(remain * 1000) to convert to seconds
+            if packet is None:
+                continue
             if verbose > 1:
                 os.write(1, b"*")
             packet = Dot15d4(packet[0])
@@ -116,13 +144,25 @@ def __kb_recv(kb: KillerBee, count: int=0, store: int=1, prn: Optional[Any]=None
     kb.close()
     return lst
 
+
 @conf.commands.register
 def kbdev() -> None:
     """List KillerBee recognized devices"""
     show_dev()
 
+
 @conf.commands.register
-def kbsendp(pkt: bytes, channel: Optional[int]=None, inter: int=0, loop: int=0, iface: Optional[Any]=None, count: Optional[int]=None, verbose: Optional[int]=None, realtime: Optional[int]=None, page: int=0) -> None:
+def kbsendp(
+    pkt: bytes,
+    channel: Optional[int] = None,
+    inter: int = 0,
+    loop: int = 0,
+    iface: Optional[Any] = None,
+    count: Optional[int] = None,
+    verbose: Optional[int] = None,
+    realtime: Optional[int] = None,
+    page: int = 0,
+) -> None:
     """
     Send a packet with KillerBee
     @param channel:  802.15.4 channel to transmit/receive on
@@ -139,24 +179,40 @@ def kbsendp(pkt: bytes, channel: Optional[int]=None, inter: int=0, loop: int=0, 
         page = conf.killerbee_page
     if not isinstance(iface, KillerBee):
         if iface is not None:
-            kb: KillerBee = KillerBee(device = iface)
+            kb: KillerBee = KillerBee(device=iface)
         else:
-            kb = KillerBee(device = conf.killerbee_device)
+            kb = KillerBee(device=conf.killerbee_device)
         kb.set_channel(channel, page)
     else:
         kb = iface
 
     # Make sure the packet has 2 bytes for FCS before TX
     if not Dot15d4FCS in pkt:
-        pkt/=Raw(b"\x00\x00")
+        pkt /= Raw(b"\x00\x00")
 
-    pkts_out: int = __kb_send(kb, pkt, inter = inter, loop = loop, count = count, verbose = verbose, realtime = realtime)
+    pkts_out: int = __kb_send(
+        kb, pkt, inter=inter, loop=loop, count=count, verbose=verbose, realtime=realtime
+    )
     if verbose:
         print("\nSent {} packets.".format(pkts_out))
     kb.close()
 
+
 @conf.commands.register
-def kbsrp(pkt: bytes, channel: Optional[int]=None, page: int=0, inter: int=0, count: int=0, iface: Optional[Any]=None, store: int=1, prn: Optional[Any]=None, lfilter: Optional[int]=None, timeout: Optional[int]=None, verbose: Optional[int]=None, realtime: Optional[int]=None) -> plist.PacketList:
+def kbsrp(
+    pkt: bytes,
+    channel: Optional[int] = None,
+    page: int = 0,
+    inter: int = 0,
+    count: int = 0,
+    iface: Optional[Any] = None,
+    store: int = 1,
+    prn: Optional[Any] = None,
+    lfilter: Optional[int] = None,
+    timeout: Optional[int] = None,
+    verbose: Optional[int] = None,
+    realtime: Optional[int] = None,
+) -> plist.PacketList:
     """
     Send and receive packets with KillerBee
     @param channel:  802.15.4 channel to transmit/receive on
@@ -183,34 +239,76 @@ def kbsrp(pkt: bytes, channel: Optional[int]=None, page: int=0, inter: int=0, co
         page = conf.killerbee_page
     if not isinstance(iface, KillerBee):
         if iface is not None:
-            kb: KillerBee = KillerBee(device = iface)
+            kb: KillerBee = KillerBee(device=iface)
         else:
-            kb = KillerBee(device = conf.killerbee_device)
+            kb = KillerBee(device=conf.killerbee_device)
         kb.set_channel(channel, page)
     else:
         kb = iface
 
     # Make sure the packet has an FCS layer before TX
     if not Dot15d4FCS in pkt:
-        pkt/=Raw(b"\x00\x00")
+        pkt /= Raw(b"\x00\x00")
 
-    pkts_out: int = __kb_send(kb, pkt, inter = inter, loop = 0, count = None, verbose = verbose, realtime = realtime)
+    pkts_out: int = __kb_send(
+        kb, pkt, inter=inter, loop=0, count=None, verbose=verbose, realtime=realtime
+    )
     if verbose:
         print("\nSent %i packets." % pkts_out)
 
-    pkts_in: List[bytes] = __kb_recv(kb, count = count, store = store, prn = prn, lfilter = lfilter, verbose = verbose, timeout = timeout)
+    pkts_in: List[bytes] = __kb_recv(
+        kb, count=count, store=store, prn=prn, lfilter=lfilter, verbose=verbose, timeout=timeout
+    )
     if verbose:
         print("\nReceived %i packets." % len(pkts_in))
 
-    return plist.PacketList(pkts_in, 'Results')
+    return plist.PacketList(pkts_in, "Results")
+
 
 @conf.commands.register
-def kbsrp1(pkt: bytes, channel: Optional[int]=None, page: int=0, inter: int=0, iface: Optional[Any]=None, store: int=1, prn: Optional[Any]=None, lfilter: Optional[int]=None, timeout: Optional[int]=None, verbose: Optional[int]=None, realtime: Optional[int]=None) -> plist.PacketList:
+def kbsrp1(
+    pkt: bytes,
+    channel: Optional[int] = None,
+    page: int = 0,
+    inter: int = 0,
+    iface: Optional[Any] = None,
+    store: int = 1,
+    prn: Optional[Any] = None,
+    lfilter: Optional[int] = None,
+    timeout: Optional[int] = None,
+    verbose: Optional[int] = None,
+    realtime: Optional[int] = None,
+) -> plist.PacketList:
     """Send and receive packets with KillerBee and return only the first answer"""
-    return kbsrp(pkt, channel = channel, page = page, inter = inter, count = 1, iface = iface, store = store, prn = prn, lfilter = lfilter, timeout = timeout, verbose = verbose, realtime = realtime)
+    return kbsrp(
+        pkt,
+        channel=channel,
+        page=page,
+        inter=inter,
+        count=1,
+        iface=iface,
+        store=store,
+        prn=prn,
+        lfilter=lfilter,
+        timeout=timeout,
+        verbose=verbose,
+        realtime=realtime,
+    )
+
 
 @conf.commands.register
-def kbsniff(channel: Optional[int]=None, page: int=0, count: int=0, iface: Optional[Any]=None, store: int=1, prn: Optional[int]=None, lfilter: Optional[int]=None, stop_filter: Any=None, verbose: Optional[int]=None, timeout: Optional[int]=None) -> plist.PacketList:
+def kbsniff(
+    channel: Optional[int] = None,
+    page: int = 0,
+    count: int = 0,
+    iface: Optional[Any] = None,
+    store: int = 1,
+    prn: Optional[int] = None,
+    lfilter: Optional[int] = None,
+    stop_filter: Any = None,
+    verbose: Optional[int] = None,
+    timeout: Optional[int] = None,
+) -> plist.PacketList:
     """
     Sniff packets with KillerBee.
     @param channel:  802.15.4 channel to transmit/receive on
@@ -232,17 +330,32 @@ def kbsniff(channel: Optional[int]=None, page: int=0, count: int=0, iface: Optio
         page = conf.killerbee_page
     if not isinstance(iface, KillerBee):
         if iface is not None:
-            kb: KillerBee = KillerBee(device = iface)
+            kb: KillerBee = KillerBee(device=iface)
         else:
-            kb = KillerBee(device = conf.killerbee_device)
+            kb = KillerBee(device=conf.killerbee_device)
         kb.set_channel(channel, page)
     else:
         kb = iface
 
-    return plist.PacketList(__kb_recv(kb, count = count, store = store, prn = prn, lfilter = lfilter, stop_filter = stop_filter, verbose = verbose, timeout = timeout), 'Sniffed')
+    return plist.PacketList(
+        __kb_recv(
+            kb,
+            count=count,
+            store=store,
+            prn=prn,
+            lfilter=lfilter,
+            stop_filter=stop_filter,
+            verbose=verbose,
+            timeout=timeout,
+        ),
+        "Sniffed",
+    )
+
 
 @conf.commands.register
-def kbrdpcap(filename: str, count: int=-1, skip: int=0, nofcs: bool=False) -> plist.PacketList:
+def kbrdpcap(
+    filename: str, count: int = -1, skip: int = 0, nofcs: bool = False
+) -> plist.PacketList:
     """
     Read a pcap file with the KillerBee library.
     Wraps the PcapReader to return scapy packet object from pcap files.
@@ -265,13 +378,16 @@ def kbrdpcap(filename: str, count: int=-1, skip: int=0, nofcs: bool=False) -> pl
             break
         if skip > 0 and packetcount <= skip:
             continue
-        if nofcs: packet = Dot15d4(packet[1])
-        else:     packet = Dot15d4FCS(packet[1])
+        if nofcs:
+            packet = Dot15d4(packet[1])
+        else:
+            packet = Dot15d4FCS(packet[1])
         lst.append(packet)
         if count > 0 and packetcount >= count:
             break
 
     return plist.PacketList(lst, os.path.basename(filename))
+
 
 @conf.commands.register
 def kbwrpcap(save_file: str, pkts: List[bytes]) -> None:
@@ -283,8 +399,9 @@ def kbwrpcap(save_file: str, pkts: List[bytes]) -> None:
         pd.write(bytes(packet))
     pd.close()
 
+
 @conf.commands.register
-def kbrddain(filename: str, count: int=-1, skip: int=0) -> plist.PacketList:
+def kbrddain(filename: str, count: int = -1, skip: int = 0) -> plist.PacketList:
     """
     Read a daintree file with the KillerBee library
     Wraps the DainTreeReader to return scapy packet object from daintree files.
@@ -296,7 +413,7 @@ def kbrddain(filename: str, count: int=-1, skip: int=0) -> plist.PacketList:
     while 1:
         packet: Optional[List[Any]] = cap.pnext()
         if packet is None:
-          break;
+            break
         packetcount += 1
         if packet[1] is None:
             break
@@ -304,9 +421,10 @@ def kbrddain(filename: str, count: int=-1, skip: int=0) -> plist.PacketList:
             continue
         packet = Dot15d4(packet[1])
         lst.append(packet)
-        if count > 0  and packetcount >= count:
+        if count > 0 and packetcount >= count:
             break
     return plist.PacketList(lst, os.path.basename(filename))
+
 
 @conf.commands.register
 def kbwrdain(save_file: str, pkts: List[Any]) -> None:
@@ -318,20 +436,27 @@ def kbwrdain(save_file: str, pkts: List[Any]) -> None:
         dt.pwrite(bytes(packet))
     dt.close()
 
+
 @conf.commands.register
-def kbkeysearch(packet: Any, searchdata: Union[str, bytes], ispath: bool=True, skipfcs: bool=True, raw: bool=False) -> Optional[Union[str, bytes]]:
+def kbkeysearch(
+    packet: Any,
+    searchdata: Union[str, bytes],
+    ispath: bool = True,
+    skipfcs: bool = True,
+    raw: bool = False,
+) -> Optional[Union[str, bytes]]:
     """
     Search a binary file for the encryption key to an encrypted packet.
     @param searchdata: path to a binary file when ispath is set, otherwise the
                        bytes (or a str, taken as latin-1) to search for the key
     @param raw:        return the key as bytes instead of colon-separated hex
     """
-    if 'fcf_security' in packet.fields and packet.fcf_security == 0:
-        raise Exception('Packet Not Encrypted (fcf_security Not Set)')
+    if "fcf_security" in packet.fields and packet.fcf_security == 0:
+        raise Exception("Packet Not Encrypted (fcf_security Not Set)")
     if isinstance(searchdata, str) and not ispath:
-        searchdata = searchdata.encode('latin-1')
+        searchdata = searchdata.encode("latin-1")
     if ispath:
-        with open(searchdata, 'rb') as f:
+        with open(searchdata, "rb") as f:
             searchdata = f.read()
     packet = packet.do_build()
     if skipfcs:
@@ -340,15 +465,16 @@ def kbkeysearch(packet: Any, searchdata: Union[str, bytes], ispath: bool=True, s
     d: Dot154PacketParser = Dot154PacketParser()
     searchdatalen: int = len(searchdata)
     while offset <= searchdatalen - 16:
-        if d.decrypt(packet, searchdata[offset:offset+16]):
-            key: bytes = searchdata[offset:offset+16]
+        if d.decrypt(packet, searchdata[offset : offset + 16]):
+            key: bytes = searchdata[offset : offset + 16]
             if raw:
                 return key
             else:
-                return ':'.join("%02x" % b for b in key)
+                return ":".join("%02x" % b for b in key)
         else:
-            offset+=1
+            offset += 1
     return None
+
 
 @conf.commands.register
 def kbgetnetworkkey(pkts: Gen) -> Dict[str, str]:
@@ -411,26 +537,34 @@ def kbgetnetworkkey(pkts: Gen) -> Dict[str, str]:
             srcaddr = zapspayload[27:35][::-1]
 
             key: Dict[str, str] = {}
-            key['key'] = ':'.join("%02x" % b for b in networkkey)
-            key['dst'] = ':'.join("%02x" % b for b in destaddr)
-            key['src'] = ':'.join("%02x" % b for b in srcaddr)
+            key["key"] = ":".join("%02x" % b for b in networkkey)
+            key["dst"] = ":".join("%02x" % b for b in destaddr)
+            key["src"] = ":".join("%02x" % b for b in srcaddr)
             return key
         except:
             continue
-    return { }
+    return {}
+
 
 @conf.commands.register
-def kbtshark(store: int=0, *args: Any, **kargs: Any) -> bytes:
+def kbtshark(store: int = 0, *args: Any, **kargs: Any) -> bytes:
     """Sniff packets using KillerBee and print them calling pkt.show()"""
-    return kbsniff(prn=lambda x: x.display(), store = store, *args, **kargs)
+    return kbsniff(prn=lambda x: x.display(), store=store, *args, **kargs)
+
 
 @conf.commands.register
-def kbrandmac(length: int=8) -> str:
+def kbrandmac(length: int = 8) -> str:
     """Returns a random MAC address using a list valid OUI's from ZigBee device manufacturers."""
     return randmac(length)
 
+
 @conf.commands.register
-def kbdecrypt(source_pkt: Gen, key: Optional[Union[Dict[str, str], Any]]=None, verbose: Optional[int]=None, doMicCheck: bool =False) -> Optional[Tuple[bytes, bool]]:
+def kbdecrypt(
+    source_pkt: Gen,
+    key: Optional[Union[Dict[str, str], Any]] = None,
+    verbose: Optional[int] = None,
+    doMicCheck: bool = False,
+) -> Optional[Tuple[bytes, bool]]:
     """Decrypt Zigbee frames using AES CCM* with 32-bit MIC"""
     if verbose is None:
         verbose = conf.verb
@@ -449,9 +583,11 @@ def kbdecrypt(source_pkt: Gen, key: Optional[Union[Dict[str, str], Any]]=None, v
         log_killerbee.error("Cannot decrypt frame without a ZigbeeNWK.")
         return None
     try:
-        import zigbee_crypt # type: ignore
+        import zigbee_crypt  # type: ignore
     except ImportError:
-        log_killerbee.error("Could not import zigbee_crypt extension, cryptographic functionality is not available.")
+        log_killerbee.error(
+            "Could not import zigbee_crypt extension, cryptographic functionality is not available."
+        )
         return None
 
     # This function destroys the packet, therefore work on a copy - @cutaway
@@ -478,10 +614,18 @@ def kbdecrypt(source_pkt: Gen, key: Optional[Union[Dict[str, str], Any]]=None, v
     # create NONCE (for crypt) and zigbeeData (for MIC) according to packet type
     sec_ctrl_byte = bytes(pkt[ZigbeeSecurityHeader])[0:1]
     if ZigbeeAppDataPayload in pkt:
-        nonce: bytes = struct.pack('L',source_pkt[ZigbeeNWK].ext_src)+struct.pack('I',source_pkt[ZigbeeSecurityHeader].fc) + sec_ctrl_byte
+        nonce: bytes = (
+            struct.pack("L", source_pkt[ZigbeeNWK].ext_src)
+            + struct.pack("I", source_pkt[ZigbeeSecurityHeader].fc)
+            + sec_ctrl_byte
+        )
         zigbeeData: bytes = pkt[ZigbeeAppDataPayload].do_build()
     else:
-        nonce = struct.pack('L',source_pkt[ZigbeeSecurityHeader].source)+struct.pack('I',source_pkt[ZigbeeSecurityHeader].fc) + sec_ctrl_byte
+        nonce = (
+            struct.pack("L", source_pkt[ZigbeeSecurityHeader].source)
+            + struct.pack("I", source_pkt[ZigbeeSecurityHeader].fc)
+            + sec_ctrl_byte
+        )
         zigbeeData = pkt[ZigbeeNWK].do_build()
     # For zigbeeData, we need the entire zigbee packet, minus the encrypted data and mic (4 bytes).
     zigbeeData = zigbeeData[:-crop_size]
@@ -508,11 +652,16 @@ def kbdecrypt(source_pkt: Gen, key: Optional[Union[Dict[str, str], Any]]=None, v
     if doMicCheck == False:
         return payload
     else:
-        if micCheck == 1: return (payload, True)
-        else:             return (payload, False)
+        if micCheck == 1:
+            return (payload, True)
+        else:
+            return (payload, False)
+
 
 @conf.commands.register
-def kbencrypt(source_pkt: Gen, data: bytes, key: Optional[bytes]=None, verbose: Optional[int]=None) -> Optional[Gen]:
+def kbencrypt(
+    source_pkt: Gen, data: bytes, key: Optional[bytes] = None, verbose: Optional[int] = None
+) -> Optional[Gen]:
     """Encrypt Zigbee frames using AES CCM* with 32-bit MIC"""
     if verbose is None:
         verbose = conf.verb
@@ -533,7 +682,9 @@ def kbencrypt(source_pkt: Gen, data: bytes, key: Optional[bytes]=None, verbose: 
     try:
         import zigbee_crypt
     except ImportError:
-        log_killerbee.error("Could not import zigbee_crypt extension, cryptographic functionality is not available.")
+        log_killerbee.error(
+            "Could not import zigbee_crypt extension, cryptographic functionality is not available."
+        )
         return None
 
     # This function destroys the packet, therefore work on a copy - @cutaway
@@ -548,8 +699,8 @@ def kbencrypt(source_pkt: Gen, data: bytes, key: Optional[bytes]=None, verbose: 
     pkt.nwk_seclevel = DOT154_CRYPT_ENC_MIC32
 
     # clear data and mic as we are about to create them
-    pkt.data = ''
-    pkt.mic = ''
+    pkt.data = ""
+    pkt.mic = ""
 
     if isinstance(data, Packet):
         decrypted: bytes = data.do_build()
@@ -559,16 +710,24 @@ def kbencrypt(source_pkt: Gen, data: bytes, key: Optional[bytes]=None, verbose: 
     # create NONCE (for crypt) and zigbeeData (for MIC) according to packet type
     sec_ctrl_byte = bytes(pkt[ZigbeeSecurityHeader])[0:1]
     if ZigbeeAppDataPayload in pkt:
-        nonce = struct.pack('L',source_pkt[ZigbeeNWK].ext_src)+struct.pack('I',source_pkt[ZigbeeSecurityHeader].fc) + sec_ctrl_byte
+        nonce = (
+            struct.pack("L", source_pkt[ZigbeeNWK].ext_src)
+            + struct.pack("I", source_pkt[ZigbeeSecurityHeader].fc)
+            + sec_ctrl_byte
+        )
         zigbeeData: bytes = pkt[ZigbeeAppDataPayload].do_build()
     else:
-        nonce = struct.pack('L',source_pkt[ZigbeeSecurityHeader].source)+struct.pack('I',source_pkt[ZigbeeSecurityHeader].fc) + sec_ctrl_byte
+        nonce = (
+            struct.pack("L", source_pkt[ZigbeeSecurityHeader].source)
+            + struct.pack("I", source_pkt[ZigbeeSecurityHeader].fc)
+            + sec_ctrl_byte
+        )
         zigbeeData = pkt[ZigbeeNWK].do_build()
 
     # minimum security level is DOT154_CRYPT_ENC_MIC32 but provide more if requested
-    miclen= kbgetmiclen(source_pkt.nwk_seclevel)
+    miclen = kbgetmiclen(source_pkt.nwk_seclevel)
     if miclen < 4:
-        miclen= 4
+        miclen = 4
 
     (payload, mic) = zigbee_crypt.encrypt_ccm(key, nonce, miclen, decrypted, zigbeeData)
 
@@ -585,24 +744,35 @@ def kbencrypt(source_pkt: Gen, data: bytes, key: Optional[bytes]=None, verbose: 
     # we should reconstruct and return what was asked for anyway.
     pkt.data = payload + mic
     pkt.nwk_seclevel = source_pkt.nwk_seclevel
-    ota_miclen= kbgetmiclen(pkt.nwk_seclevel)
+    ota_miclen = kbgetmiclen(pkt.nwk_seclevel)
     if ota_miclen > 0:
         pkt.mic = pkt.data[-ota_miclen:]
         pkt.data = pkt.data[:-ota_miclen]
     return pkt
 
+
 @conf.commands.register
 def kbgetmiclen(seclevel: int) -> int:
     """Returns the MIC length in bytes for the specified packet security level"""
-    lengths: Dict[int, int] = {DOT154_CRYPT_NONE:0, DOT154_CRYPT_MIC32:4, DOT154_CRYPT_MIC64:8, DOT154_CRYPT_MIC128:16, DOT154_CRYPT_ENC:0, DOT154_CRYPT_ENC_MIC32:4, DOT154_CRYPT_ENC_MIC64:8, DOT154_CRYPT_ENC_MIC128:16}
+    lengths: Dict[int, int] = {
+        DOT154_CRYPT_NONE: 0,
+        DOT154_CRYPT_MIC32: 4,
+        DOT154_CRYPT_MIC64: 8,
+        DOT154_CRYPT_MIC128: 16,
+        DOT154_CRYPT_ENC: 0,
+        DOT154_CRYPT_ENC_MIC32: 4,
+        DOT154_CRYPT_ENC_MIC64: 8,
+        DOT154_CRYPT_ENC_MIC128: 16,
+    }
 
     return lengths[seclevel]
+
 
 @conf.commands.register
 def kbgetpanid(packet: Gen) -> Tuple[Optional[bytes], Optional[Any]]:
     """Returns the pan id and which layer it was found in or None, None"""
     for layer in packet.layers():
         for field in packet[layer].fields:
-            if 'dest_panid' in field:
+            if "dest_panid" in field:
                 return packet[layer].dest_panid, layer
     return None, None

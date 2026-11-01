@@ -4,8 +4,12 @@ import pytest
 from Crypto.Cipher import AES
 
 from killerbee.dot154decode import (
-    Dot154PacketParser, UnsupportedPacket, BadKeyLength, BadPayloadLength,
-    DOT154_FCF_SEC_EN, DOT154_FCF_INTRA_PAN,
+    Dot154PacketParser,
+    UnsupportedPacket,
+    BadKeyLength,
+    BadPayloadLength,
+    DOT154_FCF_SEC_EN,
+    DOT154_FCF_INTRA_PAN,
 )
 
 KEY = bytes(range(16))
@@ -42,14 +46,14 @@ def secured_frame(key=KEY, corrupt_mic=False, seclevel=6, plain=b"\x42"):
     ecb = AES.new(key, AES.MODE_ECB)
     x = b"\x00" * 16
     for i in range(0, len(B), 16):
-        blk = bytes(p ^ q for p, q in zip(x, B[i:i + 16]))
+        blk = bytes(p ^ q for p, q in zip(x, B[i : i + 16]))
         x = ecb.encrypt(blk)
     T = x[:8]
     S0 = ecb.encrypt(b"\x01" + nonce + b"\x00\x00")
     c = b""
     for n in range((len(plain) + 15) // 16):
         S = ecb.encrypt(b"\x01" + nonce + struct.pack(">H", n + 1))
-        c += bytes(p ^ q for p, q in zip(plain[n * 16:(n + 1) * 16], S))
+        c += bytes(p ^ q for p, q in zip(plain[n * 16 : (n + 1) * 16], S))
     U = bytes(t ^ s for t, s in zip(T, S0))
     if corrupt_mic:
         U = bytes([U[0] ^ 1]) + U[1:]
@@ -82,10 +86,31 @@ def test_payloadlen(p):
 
 def test_pktchop_beacon(p):
     fcf = struct.pack("<H", 0)
-    body = (b"\x05" + b"\xaa\xbb" + b"\xcc\xdd" + b"\xff\xcf" + b"\x00" + b"\x00"
-            + b"\x00" + b"\x22" + b"\x84" + b"\x01" * 8 + b"\x00\x00\x00" + b"\x09" + b"\xee")
-    chop = p.pktchop(fcf + b"\x05" + b"\xaa\xbb" + b"\xcc\xdd" + b"\xff\xcf\x00\x00\x00\x22\x84"
-                     + b"\x01" * 8 + b"\x00\x00\x00\x09" + b"\xee")
+    body = (
+        b"\x05"
+        + b"\xaa\xbb"
+        + b"\xcc\xdd"
+        + b"\xff\xcf"
+        + b"\x00"
+        + b"\x00"
+        + b"\x00"
+        + b"\x22"
+        + b"\x84"
+        + b"\x01" * 8
+        + b"\x00\x00\x00"
+        + b"\x09"
+        + b"\xee"
+    )
+    chop = p.pktchop(
+        fcf
+        + b"\x05"
+        + b"\xaa\xbb"
+        + b"\xcc\xdd"
+        + b"\xff\xcf\x00\x00\x00\x22\x84"
+        + b"\x01" * 8
+        + b"\x00\x00\x00\x09"
+        + b"\xee"
+    )
     assert chop[0] == fcf
     assert chop[1] == b"\x05"
     assert chop[4] == b"\xaa\xbb" and chop[5] == b"\xcc\xdd"
@@ -101,9 +126,20 @@ def test_pktchop_beacon_truncated(p):
     assert chop[0] == b"\x00\x00"
 
 
-@pytest.mark.parametrize("daddr,saddr,intra", [
-    (3, 3, True), (2, 2, True), (2, 2, False), (0, 0, True), (3, 3, False),
-    (3, 2, True), (2, 3, True), (0, 2, False), (2, 0, True)])
+@pytest.mark.parametrize(
+    "daddr,saddr,intra",
+    [
+        (3, 3, True),
+        (2, 2, True),
+        (2, 2, False),
+        (0, 0, True),
+        (3, 3, False),
+        (3, 2, True),
+        (2, 3, True),
+        (0, 2, False),
+        (2, 0, True),
+    ],
+)
 def test_pktchop_data(p, daddr, saddr, intra):
     pkt = fcf_bytes(daddr=daddr, saddr=saddr, intra=intra) + b"\x09" + b"\x34\x12"
     pkt += b"D" * {3: 8, 2: 2, 0: 0}[daddr]
@@ -164,7 +200,7 @@ def test_decrypt_valid(p):
 
 @pytest.mark.parametrize("n", [1, 15, 16, 17, 32, 33, 100])
 def test_decrypt_multiblock_payloads(p, n):
-    plain = bytes((i * 7 + 1) & 0xff for i in range(n))
+    plain = bytes((i * 7 + 1) & 0xFF for i in range(n))
     pkt, _ = secured_frame(plain=plain)
     assert p.decrypt(pkt, KEY) == plain
 

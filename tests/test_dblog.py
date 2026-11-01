@@ -11,6 +11,7 @@ FRAME = bytes.fromhex("418877cdab01000200aabb")
 
 class FakeCursor:
     """Minimal MySQLdb-like cursor scripted per statement prefix."""
+
     def __init__(self, db):
         self.db = db
         self.rowcount = 1
@@ -20,7 +21,9 @@ class FakeCursor:
 
     def execute(self, sql, params=None):
         self.db.executed.append((sql, params))
-        self.rowcount = self.db.rowcounts.get(sql.split()[0] + (" " + sql.split()[1] if sql.startswith("INSERT") else ""), 1)
+        self.rowcount = self.db.rowcounts.get(
+            sql.split()[0] + (" " + sql.split()[1] if sql.startswith("INSERT") else ""), 1
+        )
         if sql.startswith("SELECT"):
             key = sql.split()[3] if len(sql.split()) > 3 else ""
             self._fetch = list(self.db.selects.get(key, []))
@@ -65,6 +68,7 @@ def dblog(monkeypatch):
             return None
         fake.holder["kw"] = kw
         return fake.holder["db"]
+
     fake.connect = connect
     fake.Binary = lambda b: bytes(b)
     monkeypatch.setitem(sys.modules, "MySQLdb", fake)
@@ -147,8 +151,11 @@ def test_logger_init_and_close(dblog):
     lg.close()
     assert lg.conn is None
     lg.close()
-    for fn in (lambda: lg.add_location((1, 2, 3)), lambda: lg.add_device(1, 2),
-               lambda: lg.add_packet(full={}, bytes=FRAME)):
+    for fn in (
+        lambda: lg.add_location((1, 2, 3)),
+        lambda: lg.add_device(1, 2),
+        lambda: lg.add_packet(full={}, bytes=FRAME),
+    ):
         with pytest.raises(Exception):
             fn()
 
@@ -182,9 +189,9 @@ def test_add_location_insert_fail(dblog):
 def test_add_device_existing_new_null(dblog):
     lg, db = make_logger(dblog)
     db.selects["devices"] = [(3,)]
-    assert lg.add_device(0x1234, 0xabcd) == 3
+    assert lg.add_device(0x1234, 0xABCD) == 3
     db.selects["devices"] = []
-    assert lg.add_device(0x1234, 0xabcd) == 42
+    assert lg.add_device(0x1234, 0xABCD) == 42
     db.selects["devices"] = []
     assert lg.add_device(None, None) == 42
     assert any("short_addr = NULL" in s for s, _ in db.executed)
@@ -229,9 +236,17 @@ def test_add_packet_with_fake_scapy(dblog):
     db.selects["devices"] = [(1,), (2,)]
     db.selects["locations"] = [(4,)]
     lg.page = 2
-    out = lg.add_packet(full={"rssi": -30, "datetime": "2020-01-01 00:00:00",
-                              "location": (1.0, 2.0, 3.0), "bytes": FRAME},
-                        scapy=FakeScapy(), channel=20, page=3)
+    out = lg.add_packet(
+        full={
+            "rssi": -30,
+            "datetime": "2020-01-01 00:00:00",
+            "location": (1.0, 2.0, 3.0),
+            "bytes": FRAME,
+        },
+        scapy=FakeScapy(),
+        channel=20,
+        page=3,
+    )
     assert out == 42
     sql = db.executed[-1][0]
     assert "seqnum=7" in sql and "rssi=-30" in sql and "cap_datetime" in sql

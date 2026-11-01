@@ -66,7 +66,7 @@ def test_sniffer_cycle():
     d, dev = mk()
     dev.status = [0]
     seq = iter([[0], [4]])
-    dev.ctrl_transfer = lambda *a, **k: (next(seq) if a[0] == CC253x.USB_DIR_IN else 0)
+    dev.ctrl_transfer = lambda *a, **k: next(seq) if a[0] == CC253x.USB_DIR_IN else 0
     d.sniffer_on(channel=14)
     d.set_channel(15)  # stream open path
     d.close()
@@ -109,13 +109,16 @@ def test_pnext_rejects():
     f = frame(b"\x01\x02\x03\x04")
     dev.reads = [bytearray([0])]
     assert d.pnext() is None
-    g = bytearray(f); g[1] += 1
+    g = bytearray(f)
+    g[1] += 1
     dev.reads = [g]
     assert d.pnext() is None
-    g = bytearray(f); g[0] = 1
+    g = bytearray(f)
+    g[0] = 1
     dev.reads = [g]
     assert d.pnext() is None
-    g = bytearray(f); g[7] += 1
+    g = bytearray(f)
+    g[7] += 1
     dev.reads = [g]
     assert d.pnext() is None
     dev.reads = [usb.core.USBError("t", errno=110)]

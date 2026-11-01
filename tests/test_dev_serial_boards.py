@@ -1,4 +1,5 @@
 """Tests for dev_freakduino and dev_zigduino with scripted fake serial / GoodFET handles."""
+
 import struct
 from datetime import datetime, timezone, time as dttime
 
@@ -33,7 +34,7 @@ class BytesSerial:
             self.empty_reads += 1
             if self.empty_reads > 2000:
                 raise RuntimeError("fake serial exhausted")
-            return b""   # pyserial returns b"" on timeout
+            return b""  # pyserial returns b"" on timeout
         out, self._rx = self._rx[:n], self._rx[n:]
         return out
 
@@ -42,7 +43,7 @@ class BytesSerial:
         if i < 0:
             out, self._rx = self._rx, b""
         else:
-            out, self._rx = self._rx[:i + 1], self._rx[i + 1:]
+            out, self._rx = self._rx[: i + 1], self._rx[i + 1 :]
         return out
 
     def write(self, data):
@@ -206,8 +207,11 @@ class TestFreakduino:
         parse.pnext_rec()
 
     def test_pnext_rec_done_reading(self, parse):
-        parse.handle.rx = "[{[ DONE READING BACK ALL LOGGED DATA ]}]"[1:] if False else \
-            "[" + "{[ DONE READING BACK ALL LOGGED DATA ]}]"
+        parse.handle.rx = (
+            "[{[ DONE READING BACK ALL LOGGED DATA ]}]"[1:]
+            if False
+            else "[" + "{[ DONE READING BACK ALL LOGGED DATA ]}]"
+        )
         # read() after '[' consumes 40 chars -> must match the sentinel string
         with pytest.raises(StopIteration):
             parse.pnext_rec()
@@ -376,6 +380,7 @@ class TestZigduino:
     def test_pnext(self, zig):
         assert zig.pnext(timeout=500) is None
         from killerbee.kbutils import makeFCS
+
         body = b"\x41\x88\x07"
         good = body + makeFCS(body)
         zig.handle.rx.append(good)
