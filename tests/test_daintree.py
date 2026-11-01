@@ -115,6 +115,27 @@ class TestDaintree(unittest.TestCase):
         self.assertEqual([None, None], dt.pnext())
         dt.close()
 
+    def test_daintreereader_pnext_header_and_quiet(self):
+        path = self._p("hdr.dcf")
+        with open(path, "wb") as f:
+            f.write(b"#Format=4\r\n#nospace comment\r\n1 1.5 3 aabbcc 255 1 0 26 1 0 1 32767\r\n")
+        dt = DainTreeReader(path)
+        hdr, pkt = dt.pnext()
+        self.assertEqual([1.5, 3, 3], hdr)
+        self.assertEqual(b'\xaa\xbb\xcc', pkt)
+        dt.close()
+
+    def test_daintree_close_releases_file(self):
+        dumper = DainTreeDumper(self._p("closed.dcf"))
+        fh = dumper._fh
+        dumper.close()
+        self.assertTrue(fh.closed)
+        self.assertIsNone(dumper._fh)
+        reader = DainTreeReader(self._p("test_dt_read.dcf"))
+        fh = reader._fh
+        reader.close()
+        self.assertTrue(fh.closed)
+
     def test_roundtrip(self):
         path = self._p("roundtrip.dcf")
         dt = DainTreeDumper(path)

@@ -9,19 +9,6 @@ from killerbee.zigbeedecode import (
     ZBEE_APS_FCF_DATA, ZBEE_APS_FCF_CMD, ZBEE_APS_FCF_ACK, ZBEE_APS_FCF_EXT_HEADER,
 )
 
-PY3_ORD = ("py3 bug: parser calls ord() on an int obtained by indexing bytes "
-           "(written for py2 str)")
-
-
-class IdxBytes(bytes):
-    """bytes whose integer indexing yields 1-byte bytes (like py2 str), which
-    lets the py2-style ord(packet[i]) code paths be exercised under py3."""
-    def __getitem__(self, i):
-        r = bytes.__getitem__(self, i)
-        if isinstance(i, int):
-            return bytes([r])
-        return r
-
 
 # ---------------------------------------------------------------- NWK
 def nwk(fc=0, tail=b"", payload=b"PL"):
@@ -41,9 +28,10 @@ def test_nwk_plain():
     chop = p.pktchop(pkt)
     assert chop[0] == b"\x00\x00"
     assert chop[1:3] == [b"\x01\x02", b"\x03\x04"]
-    assert chop[3] == 0x1e and chop[4] == 0x55
-    assert chop[5:9] == ["", "", "", ""]
+    assert chop[3] == b"\x1e" and chop[4] == b"\x55"
+    assert chop[5:9] == [b"", b"", b"", b""]
     assert chop[9] == b"PL"
+    assert b"".join(chop) == pkt
     assert p.hdrlen(pkt) == 8
     assert p.payloadlen(pkt) == 2
 
@@ -55,9 +43,12 @@ def test_nwk_ext_addrs_and_mcast():
     chop = p.pktchop(pkt)
     assert chop[5] == b"D" * 8
     assert chop[6] == b"S" * 8
-    assert chop[7] == 9
+    assert chop[7] == b"\x09"
     assert chop[9] == b"PL"
-    assert p.hdrlen(pkt) == 24
+    assert b"".join(chop) == pkt
+    # 8 fixed + 8 + 8 + 1 multicast control byte
+    assert p.hdrlen(pkt) == 25
+    assert p.payloadlen(pkt) == 2
 
 
 def test_nwk_ext_dest_only():
@@ -67,112 +58,132 @@ def test_nwk_ext_dest_only():
     assert p.payloadlen(pkt) == 2
 
 
-def test_nwk_source_route_hdrlen_py2style():
-    p = ZigBeeNWKPacketParser()
-    pkt = IdxBytes(nwk(ZBEE_NWK_FCF_SOURCE_ROUTE, b"\x02\x00\xaa\xbb\xcc\xdd"))
-    # plen = 8 + ord(packet[8]) * 2 ... + 2
-    assert p.hdrlen(pkt) == 8 + 4 + 2
-
-
-@pytest.mark.xfail(strict=False, reason=PY3_ORD)
-def test_nwk_source_route_hdrlen_bytes():
+def test_nwk_source_route():
     p = ZigBeeNWKPacketParser()
     pkt = nwk(ZBEE_NWK_FCF_SOURCE_ROUTE, b"\x02\x00\xaa\xbb\xcc\xdd")
-    assert p.hdrlen(pkt) == 14
-
-
-@pytest.mark.xfail(strict=False,
-                   reason="py3 bug: source-route pktchop does int + int + bytes "
-                          "(packet[relaycount + relayindex + relaylist])")
-def test_nwk_source_route_pktchop():
-    p = ZigBeeNWKPacketParser()
-    pkt = nwk(ZBEE_NWK_FCF_SOURCE_ROUTE, b"\x02\x00\xaa\xbb\xcc\xdd")
+    assert p.hdrlen(pkt) == 8 + 2 + 4
+    assert p.payloadlen(pkt) == 2
     chop = p.pktchop(pkt)
+    assert chop[8] == b"\x02\x00\xaa\xbb\xcc\xdd"
     assert chop[-1] == b"PL"
+    assert b"".join(chop) == pkt
+
+
+def test_nwk_source_route_with_mcast_and_addrs():
+    p = ZigBeeNWKPacketParser()
+    fc = ZBEE_NWK_FCF_SOURCE_ROUTE | ZBEE_NWK_FCF_MULTICAST | ZBEE_NWK_FCF_EXT_SOURCE
+    pkt = nwk(fc, b"S" * 8 + b"\x09" + b"\x01\x00\xaa\xbb")
+    chop = p.pktchop(pkt)
+    assert chop[8] == b"\x01\x00\xaa\xbb"
+    assert chop[-1] == b"PL"
+    assert p.hdrlen(pkt) == len(pkt) - 2
 
 
 # ---------------------------------------------------------------- APS
-def aps(fcbyte, body, tail=b""):
-    return fcbyte.to_bytes(1, "little") + body + tail
+def aps(fcbyte, body=b"", tail=b""):
+    return bytes([fcbyte]) + body + tail
 
 
 def fc(ftype, mode=0, ext=False):
-    # NOTE: parser computes mode as (fc & (0x0c >> 2)) == fc & 0x03 (precedence
-    # quirk), so low bits double as frame type and delivery mode.
     return ftype | (mode << 2) | (0x80 if ext else 0)
 
 
-@pytest.mark.parametrize("fcv,body", [
-    (0x00, b"\x0a" + b"\x01\x02" + b"\x03\x04" + b"\x0b"),            # data
-    (0x04, b"\x0a" + b"\x01\x02" + b"\x03\x04" + b"\x0b"),
-    (0x08, b"\x0a" + b"\x01\x02" + b"\x03\x04" + b"\x0b"),
-    (0x0c, b"\x0a" + b"\x01\x02" + b"\x03\x04" + b"\x0b"),
-])
-def test_aps_data_py2style(fcv, body):
-    p = ZigBeeAPSPacketParser()
-    pkt = IdxBytes(aps(fcv, body, b"\x05" + b"PAY"))
-    chop = p.pktchop(pkt)
-    assert chop[-1] == b"PAY" or chop[-1].endswith(b"PAY")
-    assert p.hdrlen(pkt) >= 1
-
-
-@pytest.mark.parametrize("fcv", [0x01, 0x05, 0x09, 0x0d, 0x02, 0x06, 0x0a, 0x0e,
-                                 0x03, 0x07, 0x0b, 0x0f])
-def test_aps_all_frame_types_py2style(fcv):
-    p = ZigBeeAPSPacketParser()
-    pkt = IdxBytes(bytes([fcv]) + bytes(range(1, 12)) + b"PAYLOAD")
-    try:
-        p.pktchop(pkt)
-    except Exception:
-        pass
-    p.hdrlen(pkt)
-    assert p.payloadlen(pkt) <= len(pkt)
-
-
-class _ModeMask(int):
-    """Stand-in for ZBEE_APS_FCF_DELIVERY_MODE.  The parser computes
-    `ord(fc) & MASK >> 2`, which (operator precedence bug) is fc & 0x03 and so
-    aliases delivery mode with frame type.  This object makes `MASK >> 2`
-    behave as the intended bits 2-3 extraction so the per-mode branches run."""
-    def __rshift__(self, n):
-        class _M:
-            def __rand__(self, other):
-                return (other >> 2) & 3
-        return _M()
-
-
-@pytest.fixture
-def intended_modes(monkeypatch):
-    import killerbee.zigbeedecode as mod
-    monkeypatch.setattr(mod, "ZBEE_APS_FCF_DELIVERY_MODE", _ModeMask(0x0c))
+# (frame type, delivery mode) -> field sizes: dst ep, group, cluster, profile, src ep
+LAYOUTS = {
+    (ZBEE_APS_FCF_DATA, 0): (1, 0, 2, 2, 1),
+    (ZBEE_APS_FCF_DATA, 1): (0, 0, 2, 2, 1),
+    (ZBEE_APS_FCF_DATA, 2): (1, 0, 2, 2, 1),
+    (ZBEE_APS_FCF_DATA, 3): (0, 2, 2, 2, 1),
+    (ZBEE_APS_FCF_CMD, 0): (0, 0, 0, 0, 0),
+    (ZBEE_APS_FCF_CMD, 1): (0, 0, 0, 0, 0),
+    (ZBEE_APS_FCF_CMD, 2): (0, 0, 0, 0, 0),
+    (ZBEE_APS_FCF_CMD, 3): (0, 2, 0, 0, 0),
+    (ZBEE_APS_FCF_ACK, 0): (1, 0, 2, 2, 1),
+    (ZBEE_APS_FCF_ACK, 1): (1, 0, 2, 2, 1),
+    (ZBEE_APS_FCF_ACK, 2): (1, 0, 2, 2, 1),
+    (ZBEE_APS_FCF_ACK, 3): (1, 2, 2, 2, 1),
+}
 
 
 @pytest.mark.parametrize("ftype", [ZBEE_APS_FCF_DATA, ZBEE_APS_FCF_CMD, ZBEE_APS_FCF_ACK])
 @pytest.mark.parametrize("mode", [0, 1, 2, 3])
-@pytest.mark.parametrize("ext", [False, True])
-def test_aps_type_mode_matrix(intended_modes, ftype, mode, ext):
+def test_aps_type_mode_matrix(ftype, mode):
     p = ZigBeeAPSPacketParser()
-    pkt = IdxBytes(bytes([fc(ftype, mode, ext)]) + bytes(range(1, 20)) + b"PAYLOADXX")
+    # distinct byte per position so each field can be identified
+    body = bytes(range(0x10, 0x30))
+    pkt = aps(fc(ftype, mode), body, b"")
+    sizes = LAYOUTS[(ftype, mode)]
     chop = p.pktchop(pkt)
-    assert chop[0] == bytes([fc(ftype, mode, ext)])
-    hl = p.hdrlen(pkt)
-    assert hl >= 2
-    assert p.payloadlen(pkt) == len(pkt) - hl
+    assert len(chop) == 10
+    assert chop[0] == bytes([fc(ftype, mode)])
+    off = 0
+    for i, size in enumerate(sizes):
+        assert chop[1 + i] == body[off:off + size], i
+        off += size
+    assert chop[6] == body[off:off + 1]            # APS counter
+    assert chop[7] == chop[8] == b""               # no extended header
+    assert chop[9] == body[off + 1:]               # payload
+    assert p.hdrlen(pkt) == 1 + sum(sizes) + 1
+    assert p.payloadlen(pkt) == len(body) - sum(sizes) - 1
+    assert b"".join(chop) == pkt
 
 
-def test_aps_unknown_frame_type(intended_modes):
+@pytest.mark.parametrize("ftype", [ZBEE_APS_FCF_DATA, ZBEE_APS_FCF_CMD, ZBEE_APS_FCF_ACK])
+@pytest.mark.parametrize("mode", [0, 1, 2, 3])
+def test_aps_delivery_mode_uses_bits_2_3(ftype, mode):
+    """The delivery mode is (fc & 0x0c) >> 2, independent of the frame type bits."""
+    p = ZigBeeAPSPacketParser()
+    pkt = aps(fc(ftype, mode), bytes(range(1, 30)))
+    assert p.hdrlen(pkt) == 2 + sum(LAYOUTS[(ftype, mode)])
+
+
+def test_aps_data_unicast_fields():
+    p = ZigBeeAPSPacketParser()
+    pkt = aps(0x00, b"\x0a" + b"\x01\x02" + b"\x03\x04" + b"\x0b", b"\x05" + b"PAY")
+    chop = p.pktchop(pkt)
+    assert chop == [b"\x00", b"\x0a", b"", b"\x01\x02", b"\x03\x04", b"\x0b",
+                    b"\x05", b"", b"", b"PAY"]
+    assert p.hdrlen(pkt) == 8
+    assert p.payloadlen(pkt) == 3
+
+
+def test_aps_data_group_fields():
+    p = ZigBeeAPSPacketParser()
+    pkt = aps(fc(ZBEE_APS_FCF_DATA, 3), b"\xaa\xbb" + b"\x01\x02" + b"\x03\x04" + b"\x0b", b"\x05" + b"PAY")
+    chop = p.pktchop(pkt)
+    assert chop[1:6] == [b"", b"\xaa\xbb", b"\x01\x02", b"\x03\x04", b"\x0b"]
+    assert chop[-1] == b"PAY"
+
+
+def test_aps_unknown_frame_type():
     # frame type 3 is not handled: only FC + counter + payload consumed
     p = ZigBeeAPSPacketParser()
-    pkt = IdxBytes(bytes([0x03, 0x09]) + b"XXXX")
+    pkt = bytes([0x03, 0x09]) + b"XXXX"
     assert p.pktchop(pkt)[-1] == b"XXXX"
     assert p.hdrlen(pkt) == 2
 
 
-def test_aps_extended_header_zero_block(intended_modes):
+@pytest.mark.parametrize("ftype", [ZBEE_APS_FCF_DATA, ZBEE_APS_FCF_CMD, ZBEE_APS_FCF_ACK])
+def test_aps_extended_header_fragmented(ftype):
     p = ZigBeeAPSPacketParser()
-    # hdrlen compares packet[i] != 0x00; plain-bytes tail covered by xfail tests
-    pkt = IdxBytes(bytes([0x81, 0x01, 0x02, 0x03]) + b"XXXXXXXX")
-    assert p.hdrlen(pkt) > 2
+    sizes = LAYOUTS[(ftype, 0)]
+    addr = bytes(range(0x40, 0x40 + sum(sizes)))
+    pkt = aps(fc(ftype, 0, True), addr + b"\x05" + b"\x01\x07" + b"XXXX")
+    chop = p.pktchop(pkt)
+    assert chop[6] == b"\x05"
+    assert chop[7] == b"\x01" and chop[8] == b"\x07"
+    assert chop[9] == b"XXXX"
+    assert p.hdrlen(pkt) == 1 + sum(sizes) + 1 + 2
+
+
+def test_aps_extended_header_not_fragmented():
+    p = ZigBeeAPSPacketParser()
+    pkt = bytes([0x80, 0x0a, 1, 2, 3, 4, 0x0b, 0x05, 0x00]) + b"XXXX"
+    chop = p.pktchop(pkt)
+    # FC, then unicast addressing, counter, then a zero fragmentation byte
+    assert chop[7] == b"\x00" and chop[8] == b""
+    assert chop[9] == b"XXXX"
+    assert p.hdrlen(pkt) == 9
 
 
 def test_aps_too_small():
@@ -180,21 +191,18 @@ def test_aps_too_small():
         ZigBeeAPSPacketParser().pktchop(b"\x00\x01")
 
 
-@pytest.mark.xfail(strict=False, reason=PY3_ORD)
 def test_aps_pktchop_bytes():
     p = ZigBeeAPSPacketParser()
     pkt = bytes([0x00, 0xaa, 1, 2, 3, 4, 0xbb, 0x09]) + b"XX"
     assert p.pktchop(pkt)[-1] == b"XX"
 
 
-@pytest.mark.xfail(strict=False, reason=PY3_ORD)
 def test_aps_hdrlen_bytes():
     p = ZigBeeAPSPacketParser()
     pkt = bytes([0x00, 0xaa, 1, 2, 3, 4, 0xbb, 0x09]) + b"XX"
     assert p.hdrlen(pkt) == 8
 
 
-@pytest.mark.xfail(strict=False, reason=PY3_ORD)
 def test_aps_payloadlen_bytes():
     p = ZigBeeAPSPacketParser()
     pkt = bytes([0x00, 0xaa, 1, 2, 3, 4, 0xbb, 0x09]) + b"XX"

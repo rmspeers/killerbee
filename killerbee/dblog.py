@@ -37,7 +37,7 @@ class DBLogger:
         self.conn = None
 
         if datasource == None: #datasource must be provided if DBLogger is desired
-            return None
+            return
 
         self.db = None
         self.channel = channel
@@ -47,16 +47,15 @@ class DBLogger:
         try:
             self.db = MySQLdb.connect(user=DB_USER, passwd=DB_PASS, db=DB_NAME, host=DB_HOST, port=DB_PORT)
         except Exception as e:
-            raise Exception("DBLogger was unable to connect to the database: " \
-                            +"(error %d): %s (Note: connection values should be in config.py)." \
-                            +"error %s" % e)
+            raise Exception("DBLogger was unable to connect to the database: "
+                            "%s (Note: connection values should be in config.py)." % e)
         if self.db == None: #this backup check may be redundant
             raise Exception("DBLogger: Unable to connect to database.")
         self.conn = self.db.cursor()
 
         # Set the ds_id attribute to correspond to the requested data source name
         self.conn.execute("SELECT ds_id FROM datasources WHERE ds_name LIKE %s LIMIT 1", (datasource,))
-        if self.conn.rowcount == 1: self.ds_id = self.conn.fetchone()
+        if self.conn.rowcount == 1: self.ds_id = self.conn.fetchone()[0]
         else: print("No datasource found matching name:", datasource)
 
     def close(self):
@@ -71,6 +70,7 @@ class DBLogger:
     def add_packet(self, full=None, scapy=None,
                    bytes=None, rssi=None, location=None, datetime=None, channel=None, page=0):
         if (self.conn==None): raise Exception("DBLogger requires active connection status.")
+        if full is None: full = {}
         # Use values in 'full' parameter to provide data for undefined other parameters
         if bytes == None and 'bytes' in full: bytes = full['bytes']
         if rssi == None and 'rssi' in full: rssi = full['rssi']
@@ -135,7 +135,7 @@ class DBLogger:
                               ("elevation = '%f'" % alt) if alt != None else "elevation IS NULL"  ))
         res = self.conn.fetchone()
         if (res != None):
-            return res #location already in db, return loc_id
+            return res[0] #location already in db, return loc_id
         else:
             self.conn.execute("INSERT INTO locations SET %s, %s, %s" %                            \
                             ( ("longitude = '%f'" % lon) if lon != None else "longitude = NULL" , \
@@ -152,7 +152,7 @@ class DBLogger:
                               ("pan_id = '%04x'" % panid) if panid != None else "pan_id IS NULL" ))
         res = self.conn.fetchone()
         if (res != None):
-            return res #device already exists
+            return res[0] #device already exists
         else:
             self.conn.execute("INSERT INTO devices SET %s, %s" % \
                              (("short_addr = '%04x'" % shortaddr) if shortaddr != None else "short_addr = NULL" , \

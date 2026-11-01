@@ -1,6 +1,5 @@
 import struct
 import time
-from datetime import datetime
 
 PCAPH_MAGIC_NUM = 0xa1b2c3d4
 PCAPH_VER_MAJOR = 2
@@ -26,21 +25,23 @@ class PcapReader:
         self._pcaphsnaplen = 0
         header = self.__fh.read(PCAPH_LEN)
 
-        # Read the first 4 bytes for the magic number, determine endianness
-        magicnum = struct.unpack("I", header[0:4])[0]
-        if magicnum != 0xd4c3b2a1:
-            # Little endian
+        # The magic number identifies the file and the byte order it was written in
+        if header[0:4] == struct.pack("<I", PCAPH_MAGIC_NUM):
             self.__endflag = "<"
-        elif magicnum == 0xa1b2c3d4:
-            # Big endign
+        elif header[0:4] == struct.pack(">I", PCAPH_MAGIC_NUM):
             self.__endflag = ">"
         else:
+            self.__fh.close()
             raise Exception('Specified file is not a libpcap capture')
 
-        pcaph = struct.unpack("%sIHHIIII"%self.__endflag, header)
-        if pcaph[1] != PCAPH_VER_MAJOR and pcaph[2] != PCAPH_VER_MINOR \
-                and pcaph[3] != PCAPH_THISZONE and pcaph[4] != PCAPH_SIGFIGS \
-                and pcaph[5] != PCAPH_SNAPLEN:
+        try:
+            pcaph = struct.unpack("%sIHHiIII" % self.__endflag, header)
+        except struct.error:
+            self.__fh.close()
+            raise Exception('Specified file is not a libpcap capture')
+
+        if pcaph[1] != PCAPH_VER_MAJOR or pcaph[2] != PCAPH_VER_MINOR:
+            self.__fh.close()
             raise Exception('Unsupported pcap header format or version')
 
         self._pcaphsnaplen = pcaph[5]
@@ -90,9 +91,10 @@ class PcapReader:
         except struct.error:
             return [None,None]
 
+        # Record header is ts_sec | ts_usec | incl_len | orig_len
         rechdr = [
-                float("%s.%s"%(rechdrtmp[0],rechdrtmp[1])), 
-                rechdrtmp[2], 
+                rechdrtmp[0] + rechdrtmp[1] / 1e6,
+                rechdrtmp[2],
                 rechdrtmp[3]
                 ]
         if rechdr[1] > rechdr[2] or rechdr[1] > self._pcaphsnaplen or rechdr[2] > self._pcaphsnaplen:
@@ -127,13 +129,13 @@ class PcapDumper:
 
         self.datalink = datalink
         self.__fh.write(b"".join([
-            struct.pack("I", PCAPH_MAGIC_NUM), 
-            struct.pack("H", PCAPH_VER_MAJOR),
-            struct.pack("H", PCAPH_VER_MINOR),
-            struct.pack("I", PCAPH_THISZONE),
-            struct.pack("I", PCAPH_SIGFIGS),
-            struct.pack("I", PCAPH_SNAPLEN),
-            struct.pack("I", DLT_PPI if self.ppi else self.datalink)
+            struct.pack("<I", PCAPH_MAGIC_NUM),
+            struct.pack("<H", PCAPH_VER_MAJOR),
+            struct.pack("<H", PCAPH_VER_MINOR),
+            struct.pack("<i", PCAPH_THISZONE),
+            struct.pack("<I", PCAPH_SIGFIGS),
+            struct.pack("<I", PCAPH_SNAPLEN),
+            struct.pack("<I", DLT_PPI if self.ppi else self.datalink)
             ]))
 
     def __enter__(self):
@@ -206,7 +208,7 @@ class PcapDumper:
                 if alt > -180000.00005 and alt < 180000.00005:
                     alt_i = int(round((alt + 180000.0) * 1e4))
                 else:
-                    raise Exception("Altitude value is out of expected range: %.8f" % lon)
+                    raise Exception("Altitude value is out of expected range: %.8f" % alt)
                 # Build Geolocation PPI Header
                 caceppi_fgeolocation = b"".join([
                     struct.pack("<H", GPS_TAG),  #2 = Field Type 802.11-Common
@@ -228,24 +230,25 @@ class PcapDumper:
                 struct.pack("<I", self.datalink) #Field
                 ])
 
-        if ts_sec == None or ts_usec == None: 
-            dt = datetime.now() 
-            ts_sec = int(dt.strftime('%s')) 
-            ts_usec = dt.microsecond
+        if ts_sec is None or ts_usec is None:
+            now = time.time()
+            ts_sec = int(now)
+            ts_usec = int((now - ts_sec) * 1e6)
 
         plen = len(packet)
         if orig_len == None:
             orig_len = plen
 
         #Encapsulated packet header and packet
-        output_list = [ struct.pack("I", ts_sec),
-                        struct.pack("I", ts_usec),
-                        struct.pack("I", orig_len),
-                        struct.pack("I", plen) ]
+        # Record header is ts_sec | ts_usec | incl_len | orig_len
+        output_list = [ struct.pack("<I", ts_sec),
+                        struct.pack("<I", ts_usec),
+                        struct.pack("<I", plen),
+                        struct.pack("<I", orig_len) ]
 
         if self.ppi is True:
-            output_list[2] = struct.pack("I", orig_len + pph_len)
-            output_list[3] = struct.pack("I", plen + pph_len)
+            output_list[2] = struct.pack("<I", plen + pph_len)
+            output_list[3] = struct.pack("<I", orig_len + pph_len)
             output_list.append(caceppi_hdr)
             if location is not None:
                 output_list.append(caceppi_fgeolocation)

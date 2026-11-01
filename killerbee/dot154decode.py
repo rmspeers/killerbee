@@ -43,33 +43,21 @@ class Dot154PacketParser:
         """
         Instantiates the Dot154PacketParser class.
         """
-
-        # State values for AES-CTR mode
-        self.__crypt_blockcntr = 1
-        self.__crypt_A_i = []
         return
-
-    def __crypt_counter(self):
-        """
-        Used for AES-CTR mode after populating self.__crypt_A_i
-        Don't call this directly.  Just don't.
-        """
-        retindex = self.__crypt_blockcntr
-        self.__crypt_blockcntr += 1
-        return self.__crypt_A_i[retindex]
 
     def decrypt(self, packet, key):
         """
-        Decrypts the specified packet. Returns empty byte if the packet is
-        not encrypted, or if decryption MIC validation fails.
+        Decrypts the specified packet using 802.15.4 AES-CCM* with security
+        level ENC-MIC-64.  Returns empty bytes if decryption MIC validation
+        fails.
 
         @type packet: Bytes
         @param packet: Packet contents.
         @type key: Bytes
         @param key: Key contents.
         @rtype: Bytes
-        @return: Decrypted packet contents, empty byte if not encrypted or if
-        decryped MIC fails validation.
+        @return: Decrypted packet contents, empty bytes if the decrypted
+        MIC fails validation.
         """
 
         # Retrieve the data payload from the packet contents
@@ -85,97 +73,41 @@ class Dot154PacketParser:
 
         # Encrypted content is:
         # Sec Level | 4-byte counter | Flags | Ciphertext | Encrypted 8-byte MIC
-
         if self.payloadlen(packet) < 15:
             raise BadPayloadLength(
                 "Payload length too short (%d)." % self.payloadlen(packet)
             )
 
         nonce = self.nonce(packet)
+        if not nonce:
+            # Frame security is not enabled, nothing to decrypt
+            return b""
 
-        # c = ciphertext payload including trailing 8-byte encrypted MIC
-        c = encpayload[-9:]
+        # Ciphertext C is everything after the 6-byte security header, up to
+        # the trailing 8-byte encrypted MIC U.
+        C = encpayload[6:-8]
+        U = encpayload[-8:]
 
-        # 1. Parse C||U where U is the right-most bytes for MIC and C is the
-        #    remaining bytes (representing encrypted packet payload content)
-        C = c[0:-8]
-        U = c[-8:]
-
-        # 2. Form cipherText by padding C to a block size
-        cipherText = C + (b"\x00" * (16 - len(C) % 16))
-
-        # 3. Form 1-byte flags field = 01
-        #    XXX will vary when L changes
-        flags = b"\x01"
-
-        # 4. Define 16-octet A_i consisting of:
-        #        Flags || Nonce || 2-byte counter i for i=0,1,2, ...
-        #    A[0] is for authenticity check, A[1] is for the first block of data,
-        #    A[2] is for the 2nd block of data, if C > 16
-        self.__crypt_A_i = []
-        for i in range(0, (1 + 1 + int(len(C) / 16))):
-            self.__crypt_A_i.append(flags + nonce + struct.pack(">H", i))
-
-        # 5. Decrypt cipherText producing plainText (observed)
-        self.__crypt_blockcntr = 1  # Start at A[1] to decrypt
-        crypt = AES.new(key, AES.MODE_CTR, counter=self.__crypt_counter)
-
-        plainText = crypt.decrypt(cipherText)[0 : len(C)]
-
-        # 6. Compute S_0 as E(Key, A[0])
-        crypt = AES.new(key, AES.MODE_CBC, b"\x00" * 16)
-        S_0 = crypt.encrypt(self.__crypt_A_i[0])
-
-        # 7. Compute MIC (T) observed as S_0 XOR U
-        T_obs = []
-        for i in range(0, len(S_0[0:8])):
-            T_obs.append((S_0[i] ^ U[i]))
-
-        # Convert T_obs back into a string (please, I need Python help)
-        T_obs = b"".join(struct.pack("B", i) for i in T_obs)
-
-        # 8. Compute a over packet contents before ciphertext payload
-        #    This is the 802.15.4 header,plus the security level, frame
-        #    counter and flags byte (01)
+        # The additional authenticated data is the 802.15.4 header, plus the
+        # security level, frame counter and flags byte.
         hdrlen = self.hdrlen(packet)
-        a = packet[0:hdrlen] + packet[hdrlen : hdrlen + 6]
+        a = packet[0 : hdrlen + 6]
 
-        # 9. Concatenate L(a) of 2-byte length a with a
-        addAuthData = struct.pack(">H", len(a)) + a
-
-        # 10. Pad addAuthData to an even block size
-        addAuthData += b"\x00" * (16 - len(addAuthData) % 16)
-
-        # 11. Form AuthData by concatenating addAuthData and PlaintextData
-        #     Pad plainText to an even block size
-        plainTextPadded = plainText + (b"\x00" * (16 - len(plainText) % 16))
-
-        authData = addAuthData + plainTextPadded
-
-        # 12. Perform authData transformation into B[0], B[1], ..., B[i]
-        B = b"\x59" + nonce + b"\x00\x01" + authData
-
-        # 13. Calculate the MIC (T) calculated with CBC-MAC
-        iv = b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-
-        for i in range(0, int(len(B) / 16)):
-            crypt = AES.new(key, AES.MODE_CBC, iv)
-            Bn = B[i * 16 : (i * 16) + 16]
-            iv = crypt.encrypt(Bn)
-
-        T_calc = iv[0:8]
-
-        # 14. Compare
-        if T_obs == T_calc:
-            return plainText
-        else:
-            return ""
+        # CCM* with a 13-byte nonce (L=2) and an 8-byte MIC
+        crypt = AES.new(key, AES.MODE_CCM, nonce=nonce, mac_len=8,
+                        assoc_len=len(a), msg_len=len(C))
+        crypt.update(a)
+        try:
+            return crypt.decrypt_and_verify(C, U)
+        except ValueError:
+            # MIC check failed
+            return b""
 
     def pktchop(self, packet):
         """
         Chops up the specified packet contents into a list of fields.  Does
-        not attempt to re-order the field values for parsing.  ''.join(X) will
-        reassemble original packet string.  Fields which may or may not be
+        not attempt to re-order the field values for parsing.  b''.join(X) will
+        reassemble original packet bytes.  Fields which may or may not be
         present (such as the Source PAN field) are empty if they are not
         present, keeping the list elements consistent, as follows:
         FCF | Seq# | DPAN | DA | SPAN | SA | [Beacon Data] | PHY Payload
@@ -193,7 +125,7 @@ class Dot154PacketParser:
         @rtype: list
         @return: Chopped contents of the 802.15.4 packet into list elements.
         """
-        pktchop = ["", "", "", "", "", "", [], ""]
+        pktchop = [b"", b"", b"", b"", b"", b"", [], b""]
 
         pktchop[0] = packet[0:2]
 
@@ -206,53 +138,26 @@ class Dot154PacketParser:
         # Check if we are dealing with a beacon frame
         if (fcf & DOT154_FCF_TYPE_MASK) == DOT154_FCF_TYPE_BEACON:
 
-            beacondata = ["", "", "", "", "", "", "", "", "", ""]
+            beacondata = [b""] * 10
 
-            try:
+            # 802.15.4 fields, SPAN and SA
+            pktchop[4] = packet[3:5]
+            pktchop[5] = packet[5:7]
+            offset = 7
 
-                # 802.15.4 fields, SPAN and SA
-                pktchop[4] = packet[3:5]
-                pktchop[5] = packet[5:7]
-                offset = 7
-
-                # Superframe specification
-                beacondata[0] = packet[offset : offset + 2]
-                offset += 2
-
-                # GTS data
-                beacondata[1] = packet[offset]
-                offset += 1
-
-                # Pending address count
-                beacondata[2] = packet[offset]
-                offset += 1
-
-                # Protocol ID
-                beacondata[3] = packet[offset]
-                offset += 1
-
-                # Stack Profile version
-                beacondata[4] = packet[offset]
-                offset += 1
-
-                # Capability information
-                beacondata[5] = packet[offset]
-                offset += 1
-
-                # Extended PAN ID
-                beacondata[6] = packet[offset : offset + 8]
-                offset += 8
-
-                # TX Offset
-                beacondata[7] = packet[offset : offset + 3]
-                offset += 3
-
-                # Update ID
-                beacondata[8] = packet[offset]
-                offset += 1
-
-            except:
-                pass
+            # Slicing never raises, so a truncated beacon simply yields
+            # shorter (or empty) trailing fields.
+            for idx, size in ((0, 2),   # Superframe specification
+                              (1, 1),   # GTS data
+                              (2, 1),   # Pending address count
+                              (3, 1),   # Protocol ID
+                              (4, 1),   # Stack Profile version
+                              (5, 1),   # Capability information
+                              (6, 8),   # Extended PAN ID
+                              (7, 3),   # TX Offset
+                              (8, 1)):  # Update ID
+                beacondata[idx] = packet[offset : offset + size]
+                offset += size
 
             pktchop[6] = beacondata
 
@@ -281,10 +186,10 @@ class Dot154PacketParser:
             # Examine the source addressing mode
             saddr_mask = (fcf & DOT154_FCF_SADDR_MASK) >> 14
 
-            if daddr_mask == DOT154_FCF_ADDR_EXT:
+            if saddr_mask == DOT154_FCF_ADDR_EXT:
                 pktchop[5] = packet[offset : offset + 8]
                 offset += 8
-            elif daddr_mask == DOT154_FCF_ADDR_SHORT:
+            elif saddr_mask == DOT154_FCF_ADDR_SHORT:
                 pktchop[5] = packet[offset : offset + 2]
                 offset += 2
 
@@ -341,7 +246,7 @@ class Dot154PacketParser:
 
     def nonce(self, packet):
         """
-        Returns the nonce of the 802.15.4 packet.  Returns empty string for
+        Returns the nonce of the 802.15.4 packet.  Returns empty bytes for
         unencrypted frames.
         @type packet: Bytes
         @param packet: Packet contents to evaluate for nonce.
@@ -354,7 +259,7 @@ class Dot154PacketParser:
 
         if (fcf & DOT154_FCF_SEC_EN) == 0:
             # Packet is not encrypted
-            return ""
+            return b""
 
         # Nonce formation is Src Addr || Frame Counter || Security Level
         pchop = self.pktchop(packet)

@@ -127,6 +127,10 @@ ENC_PKT = b'a\x88\xe0|F\x00\x00s\xc5H"\x00\x00s\xc5\x1e\x00(\xee\xee\x00\x00\x8a
 NWK_KEY = b"\xe4\x2f\xc8\x5f\x9b\xaf\x5f\x4f\xb5\x8e\x6a\x1d\xbd\x2a\x13\x45"
 
 
+from test_dot154decode import secured_frame as _mac_secured_frame, KEY as MAC_KEY
+MAC_PKT, _ = _mac_secured_frame()
+
+
 def _frame_with_fcs(raw=ENC_PKT):
     from killerbee.kbutils import makeFCS
     return raw + makeFCS(raw)
@@ -221,10 +225,25 @@ class TestKbScapyRadio:
         # an already-FCS packet is sent as is
         kbsendp(Dot15d4FCS(_frame_with_fcs()), count=1)
 
-    @pytest.mark.xfail(strict=False, run=False, reason="__kb_send never decrements a positive 'loop', so loop=N>0 sends forever")
-    def test_kbsendp_loop(self, fake_dev):
+    @pytest.mark.parametrize("kwargs,expected", [
+        ({"loop": 3}, 3), ({"loop": 1}, 1), ({"loop": 0}, 1), ({"count": 2}, 2),
+        ({"count": 2, "loop": 5}, 2)])
+    def test_kbsendp_loop(self, fake_dev, kwargs, expected):
         pkt = Dot15d4(b'\x01' * 20)
-        kbsendp(pkt, loop=1, verbose=0)
+        kbsendp(pkt, verbose=0, **kwargs)
+        assert len(fake_dev.port().tx_packets) == expected
+
+    def test_kbsend_negative_loop_until_interrupted(self, fake_dev, monkeypatch):
+        import killerbee.scapy_extensions as se
+        kb = KillerBee()
+        sent = []
+
+        def inject(*a, **k):
+            sent.append(1)
+            if len(sent) == 5:
+                raise KeyboardInterrupt
+        monkeypatch.setattr(kb, "inject", inject)
+        assert se.__dict__["__kb_send"](kb, Dot15d4(b'\x01' * 10), loop=-1, verbose=0) == 4
 
     def test_kbsrp_and_kbsrp1(self, fake_dev):
         from conftest import FakeGoodFETSerial
@@ -315,21 +334,28 @@ class TestKbScapyFiles:
         with pytest.raises(Exception):
             kbkeysearch(pkt, "x" * 64, ispath=False)
 
-    @pytest.mark.xfail(strict=False, reason="kbkeysearch uses py2 str semantics (Dot154PacketParser.decrypt on str keys)")
     def test_kbkeysearch_finds_key(self, tmp_path):
         keyfile = tmp_path / "blob.bin"
-        keyfile.write_bytes(b"\x00" * 5 + NWK_KEY + b"\x00" * 40)
-        pkt = Dot15d4(ENC_PKT)
-        r = kbkeysearch(pkt, str(keyfile), ispath=True, skipfcs=False)
-        assert r == ":".join("%02x" % b for b in NWK_KEY)
+        keyfile.write_bytes(b"\x00" * 5 + MAC_KEY + b"\x00" * 40)
+        pkt = Dot15d4(MAC_PKT + b"\x00\x00")
+        r = kbkeysearch(pkt, str(keyfile), ispath=True)
+        assert r == ":".join("%02x" % b for b in MAC_KEY)
 
-    def test_kbkeysearch_no_match(self, tmp_path):
-        pkt = Dot15d4(b'\x61\x88\x01\x00\x00\x00\x00\x00\x00')
-        try:
-            r = kbkeysearch(pkt, "A" * 40, ispath=False)
-        except Exception:
-            pytest.xfail("kbkeysearch raises on py3 (bytes/str mix)")
-        assert r is None
+    def test_kbkeysearch_raw_and_inline_data(self):
+        pkt = Dot15d4(MAC_PKT + b"\x00\x00")
+        blob = b"\x00" * 5 + MAC_KEY + b"\x00" * 40
+        assert kbkeysearch(pkt, blob, ispath=False, raw=True) == MAC_KEY
+        # a str is taken as latin-1 text
+        assert kbkeysearch(pkt, blob.decode("latin-1"), ispath=False) \
+            == ":".join("%02x" % b for b in MAC_KEY)
+        # a key at the very end of the data is still found
+        assert kbkeysearch(pkt, b"\x00" * 9 + MAC_KEY, ispath=False, raw=True) == MAC_KEY
+        # without an FCS to skip
+        assert kbkeysearch(Dot15d4(MAC_PKT), blob, ispath=False, skipfcs=False, raw=True) == MAC_KEY
+
+    def test_kbkeysearch_no_match(self):
+        pkt = Dot15d4(MAC_PKT + b"\x00\x00")
+        assert kbkeysearch(pkt, b"A" * 40, ispath=False) is None
 
     def test_kbgetnetworkkey_no_key(self):
         assert kbgetnetworkkey([Dot15d4(ENC_PKT)]) == {}
@@ -390,7 +416,7 @@ class TestKbScapyCrypto:
 
 
 class _Chop:
-    """Fake zigbee parser returning py2-style (str) chopped fields."""
+    """Fake zigbee parser returning canned chopped fields."""
     def __init__(self, result):
         self.result = result
 
@@ -402,15 +428,37 @@ class _Chop:
 
 
 def _key_payload(cmd=5, ktype=1, size=35):
-    key = "".join(chr(i) for i in range(16))
-    body = chr(cmd) + chr(ktype) + key + "\x00" + "".join(chr(0x10 + i) for i in range(8)) \
-        + "".join(chr(0x20 + i) for i in range(8))
-    return (body + "\x00" * 40)[:max(size, 0)] if size < 35 else body
+    key = bytes(range(16))
+    body = bytes([cmd, ktype]) + key + b"\x00" + bytes(0x10 + i for i in range(8)) \
+        + bytes(0x20 + i for i in range(8))
+    return (body + b"\x00" * 40)[:max(size, 0)] if size < 35 else body
+
+
+def _transport_key_frame(apsfc=ZBEE_APS_FCF_CMD, payload=None):
+    """MAC data frame / NWK header / APS command frame carrying a key."""
+    mac = struct.pack("<H", 0x8841) + b"\x01" + b"\x34\x12" + b"\x01\x00" + b"\x02\x00"
+    nwk = struct.pack("<H", 0x0009) + b"\x01\x00\x02\x00\x1e\x55"
+    aps = bytes([apsfc]) + b"\x07"
+    return mac + nwk + aps + (_key_payload() if payload is None else payload)
+
+
+class TestKbGetNetworkKey:
+    def test_real_frame(self):
+        r = kbgetnetworkkey([Raw(load=_transport_key_frame())])
+        assert r["key"] == ":".join("%02x" % i for i in reversed(range(16)))
+        assert r["dst"] == ":".join("%02x" % (0x17 - i) for i in range(8))
+        assert r["src"] == ":".join("%02x" % (0x27 - i) for i in range(8))
+
+    def test_real_frame_secured_aps_is_skipped(self):
+        assert kbgetnetworkkey([Raw(load=_transport_key_frame(ZBEE_APS_FCF_CMD | 0x20))]) == {}
+
+    def test_skips_to_later_packet(self):
+        pkts = [Dot15d4(ENC_PKT), Raw(load=_transport_key_frame())]
+        assert "key" in kbgetnetworkkey(pkts)
 
 
 class TestKbGetNetworkKeyMocked:
-    """kbgetnetworkkey relies on py2 str semantics in the zigbee parsers; the
-    parsers are mocked here to exercise its branch logic."""
+    """The parsers are mocked here to exercise kbgetnetworkkey's branch logic."""
 
     def _run(self, monkeypatch, mac, nwk, aps):
         import killerbee.scapy_extensions as se
@@ -420,29 +468,24 @@ class TestKbGetNetworkKeyMocked:
         return kbgetnetworkkey([Dot15d4(ENC_PKT)])
 
     def test_found(self, monkeypatch):
-        r = self._run(monkeypatch, ["x", "macpayload"], ["x", "nwkpayload"],
-                      [chr(ZBEE_APS_FCF_CMD), _key_payload()])
+        r = self._run(monkeypatch, [b"x", b"macpayload"], [b"x", b"nwkpayload"],
+                      [bytes([ZBEE_APS_FCF_CMD]), _key_payload()])
         assert r["key"].startswith("0f:0e:0d")
         assert r["dst"].count(":") == 7 and r["src"].count(":") == 7
 
     @pytest.mark.parametrize("mac,nwk,aps", [
-        ([None], ["x", "n"], ["a", "b"]),                                    # no mac payload
-        (["x", "m"], [None], ["a", "b"]),                                    # no nwk payload
-        (["x", "m"], ["x", "n"], None),                                      # no aps chop
-        (["x", "m"], ["x", "n"], [chr(ZBEE_APS_FCF_DATA), "p"]),             # not a cmd
-        (["x", "m"], ["x", "n"], [chr(ZBEE_APS_FCF_CMD | 0x04), "p"]),       # delivery mode != 0
-        (["x", "m"], ["x", "n"], [chr(ZBEE_APS_FCF_CMD | 0x20), "p"]),       # security (becomes 0x21 !=1 -> passes)
-        (["x", "m"], ["x", "n"], [chr(ZBEE_APS_FCF_CMD), "short"]),          # too short
-        (["x", "m"], ["x", "n"], [chr(ZBEE_APS_FCF_CMD), _key_payload(cmd=4)]),   # not transport key
-        (["x", "m"], ["x", "n"], [chr(ZBEE_APS_FCF_CMD), _key_payload(ktype=2)]),  # not nwk key
+        ([None], [b"x", b"n"], [b"a", b"b"]),                                   # no mac payload
+        ([b"x", b"m"], [None], [b"a", b"b"]),                                   # no nwk payload
+        ([b"x", b"m"], [b"x", b"n"], None),                                     # no aps chop
+        ([b"x", b"m"], [b"x", b"n"], [bytes([ZBEE_APS_FCF_DATA]), b"p"]),       # not a cmd
+        ([b"x", b"m"], [b"x", b"n"], [bytes([ZBEE_APS_FCF_CMD | 0x04]), b"p"]),  # delivery mode != 0
+        ([b"x", b"m"], [b"x", b"n"], [bytes([ZBEE_APS_FCF_CMD | 0x20]), _key_payload()]),  # APS security
+        ([b"x", b"m"], [b"x", b"n"], [bytes([ZBEE_APS_FCF_CMD]), b"short"]),    # too short
+        ([b"x", b"m"], [b"x", b"n"], [bytes([ZBEE_APS_FCF_CMD]), _key_payload(cmd=4)]),    # not transport key
+        ([b"x", b"m"], [b"x", b"n"], [bytes([ZBEE_APS_FCF_CMD]), _key_payload(ktype=2)]),  # not nwk key
     ])
     def test_rejected(self, monkeypatch, mac, nwk, aps):
         assert self._run(monkeypatch, mac, nwk, aps) == {}
-
-    def test_security_bit_exactly_one(self, monkeypatch):
-        # (apsfc & 0x20) == 1 can never hold; documents the always-false check
-        r = self._run(monkeypatch, ["x", "m"], ["x", "n"], [chr(ZBEE_APS_FCF_CMD | 0x20), _key_payload()])
-        assert "key" in r
 
 
 class TestKbSendRealtime:

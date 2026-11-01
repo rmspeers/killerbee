@@ -63,7 +63,8 @@ class DainTreeDumper:
         if self._fh is None:
             raise Exception('File handle does not exist')
 
-        del(self._fh)
+        self._fh.close()
+        self._fh = None
 
 
 class DainTreeReader:
@@ -89,32 +90,30 @@ class DainTreeReader:
         if self._fh is None:
             raise Exception('File handle does not exist')
 
-        del(self._fh)
+        self._fh.close()
+        self._fh = None
 
-    def pnext(self) -> Optional[List[Any]]:
+    def pnext(self) -> List[Any]:
         '''
         Retrieves the next packet from the capture file.  Returns a list of
         [Hdr, packet] where Hdr is a list of [timestamp, snaplen, plen] and
-        packet is a string of the payload content.  Returns None at the end
-        of the packet capture.
+        packet is the payload content as bytes.  Returns [None, None] at the
+        end of the packet capture, as PcapReader.pnext() does.
         @rtype: List
         '''
         if self._fh is None:
             raise Exception('File handle does not exist')
 
-        try:
-            while(1):
-                record: List[bytes] = self._fh.readline().split(b' ')
-                if record[0] == b"#":
-                    continue
-                else:
-                    break
+        while True:
+            record: List[bytes] = self._fh.readline().split(b' ')
+            if not record[0].startswith(b"#"):
+                break
 
-            if record == None:
-                return None
+        try:
             # Return a list with the first element a list containing timestamp
             # for compatibility with the pcapdump PcapReader.pnext() method.
-            print(record[3])
-            return [[float(record[1]),len(record[3]),len(record[3])], binascii.unhexlify(record[3])]
+            packet: bytes = binascii.unhexlify(record[3])
+            return [[float(record[1]), len(packet), len(packet)], packet]
         except IndexError:
+            # End of the capture file
             return [None, None]

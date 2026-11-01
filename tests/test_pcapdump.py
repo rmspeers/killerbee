@@ -25,15 +25,11 @@ def test_dump_and_read_roundtrip(tmp_path):
     assert r.datalink() == 195
     hdr, frame = r.pnext()
     assert frame == FRAME
-    assert hdr[0] == 1000.5 and hdr[1] == len(FRAME) == hdr[2]
+    assert hdr[0] == pytest.approx(1000.000005, abs=1e-9) and hdr[1] == len(FRAME) == hdr[2]
     assert r.pnext() == [None, None]
     r.close()
 
 
-@pytest.mark.xfail(strict=False, raises=Exception,
-                   reason="pcap_dump writes orig_len before incl_len (record header "
-                          "order is swapped vs libpcap), so orig_len > len(packet) "
-                          "produces a header PcapReader rejects")
 def test_dump_orig_len_roundtrip(tmp_path):
     f = tmp_path / "ol.pcap"
     d = PcapDumper(195, str(f))
@@ -41,7 +37,20 @@ def test_dump_orig_len_roundtrip(tmp_path):
     d.close()
     r = PcapReader(str(f))
     hdr, frame = r.pnext()
-    assert frame == FRAME and hdr[2] == 100
+    assert frame == FRAME and hdr[1] == len(FRAME) and hdr[2] == 100
+    # libpcap record header: ts_sec, ts_usec, incl_len, orig_len
+    raw = f.read_bytes()[24:40]
+    assert struct.unpack("<IIII", raw) == (1001, 7, len(FRAME), 100)
+
+
+def test_dump_default_timestamp_is_now(tmp_path):
+    import time
+    f = tmp_path / "now.pcap"
+    before = time.time()
+    with PcapDumper(195, str(f)) as d:
+        d.pcap_dump(FRAME)
+    hdr, _ = PcapReader(str(f)).pnext()
+    assert before - 1 <= hdr[0] <= time.time() + 1
 
 
 def test_dump_default_timestamp_and_context_manager(tmp_path):
@@ -100,10 +109,26 @@ def test_ppi_bad_location(tmp_path, loc):
         d.pcap_dump(FRAME, ts_sec=1, ts_usec=2, location=loc)
 
 
-def test_reader_bad_magic(tmp_path):
-    # Byte-swapped magic matches neither branch -> exception
+def test_reader_big_endian_file(tmp_path):
     f = tmp_path / "be.pcap"
-    f.write_bytes(struct.pack(">IHHIIII", 0xa1b2c3d4, 2, 4, 0, 0, 65535, 195))
+    f.write_bytes(struct.pack(">IHHiIII", 0xa1b2c3d4, 2, 4, 0, 0, 65535, 195)
+                  + struct.pack(">IIII", 5, 250000, 3, 3) + b"abc")
+    r = PcapReader(str(f))
+    assert r.datalink() == 195
+    hdr, frame = r.pnext()
+    assert hdr == [5.25, 3, 3] and frame == b"abc"
+    r.close()
+
+
+@pytest.mark.parametrize("content", [
+    struct.pack("<IHHiIII", 0xdeadbeef, 2, 4, 0, 0, 65535, 195),   # not a pcap magic
+    struct.pack("<IHHiIII", 0xa1b2c3d4, 3, 0, 0, 0, 65535, 195),   # unsupported version
+    struct.pack("<I", 0xa1b2c3d4),                                  # truncated header
+    b"",
+])
+def test_reader_rejects_bad_header(tmp_path, content):
+    f = tmp_path / "bad.pcap"
+    f.write_bytes(content)
     with pytest.raises(Exception):
         PcapReader(str(f))
 

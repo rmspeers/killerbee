@@ -44,14 +44,18 @@ def __kb_send(kb: KillerBee, x: Union[str, Gen], channel: Optional[int]=None, pa
         verbose = conf.verb
 
     n: int = 0
+    # Number of passes over the packet list: 'count' wins, then 'loop',
+    # otherwise a single pass.  A negative value repeats until interrupted.
     if count is not None:
-        loop = -count
-    elif not loop:
-        loop=-1
+        passes: int = count
+    elif loop:
+        passes = loop
+    else:
+        passes = 1
 
     dt0: Optional[int] = None
     try:
-        while loop:
+        while passes:
             for p in x:
                 if realtime:
                     ct = time.time()
@@ -66,8 +70,8 @@ def __kb_send(kb: KillerBee, x: Union[str, Gen], channel: Optional[int]=None, pa
                 if verbose:
                     os.write(1,b".")
                 time.sleep(inter)
-            if loop < 0:
-                loop += 1
+            if passes > 0:
+                passes -= 1
     except KeyboardInterrupt:
         pass
     return n
@@ -124,7 +128,7 @@ def kbsendp(pkt: bytes, channel: Optional[int]=None, inter: int=0, loop: int=0, 
     @param channel:  802.15.4 channel to transmit/receive on
     @param page:     802.15.4 subghz page to transmit/receive on
     @param inter:    time to wait between tranmissions
-    @param loop:     number of times to process the packet list
+    @param loop:     number of times to process the packet list (negative: until interrupted)
     @param iface:    KillerBee interface to use, or KillerBee() class instance
     @param verbose:  set verbosity level
     @param realtime: use packet's timestamp, bending time with realtime value
@@ -144,7 +148,7 @@ def kbsendp(pkt: bytes, channel: Optional[int]=None, inter: int=0, loop: int=0, 
 
     # Make sure the packet has 2 bytes for FCS before TX
     if not Dot15d4FCS in pkt:
-        pkt/=Raw("\x00\x00")
+        pkt/=Raw(b"\x00\x00")
 
     pkts_out: int = __kb_send(kb, pkt, inter = inter, loop = loop, count = count, verbose = verbose, realtime = realtime)
     if verbose:
@@ -188,7 +192,7 @@ def kbsrp(pkt: bytes, channel: Optional[int]=None, page: int=0, inter: int=0, co
 
     # Make sure the packet has an FCS layer before TX
     if not Dot15d4FCS in pkt:
-        pkt/=Raw("\x00\x00")
+        pkt/=Raw(b"\x00\x00")
 
     pkts_out: int = __kb_send(kb, pkt, inter = inter, loop = 0, count = None, verbose = verbose, realtime = realtime)
     if verbose:
@@ -315,27 +319,33 @@ def kbwrdain(save_file: str, pkts: List[Any]) -> None:
     dt.close()
 
 @conf.commands.register
-def kbkeysearch(packet: Any, searchdata: str, ispath: bool=True, skipfcs: bool=True, raw: bool=False) -> Optional[str]:
+def kbkeysearch(packet: Any, searchdata: Union[str, bytes], ispath: bool=True, skipfcs: bool=True, raw: bool=False) -> Optional[Union[str, bytes]]:
     """
     Search a binary file for the encryption key to an encrypted packet.
+    @param searchdata: path to a binary file when ispath is set, otherwise the
+                       bytes (or a str, taken as latin-1) to search for the key
+    @param raw:        return the key as bytes instead of colon-separated hex
     """
     if 'fcf_security' in packet.fields and packet.fcf_security == 0:
         raise Exception('Packet Not Encrypted (fcf_security Not Set)')
+    if isinstance(searchdata, str) and not ispath:
+        searchdata = searchdata.encode('latin-1')
     if ispath:
-        searchdata = open(searchdata, 'r').read()
+        with open(searchdata, 'rb') as f:
+            searchdata = f.read()
     packet = packet.do_build()
     if skipfcs:
         packet = packet[:-2]
     offset: int = 0
-    keybytes: List[bytes] = []
     d: Dot154PacketParser = Dot154PacketParser()
     searchdatalen: int = len(searchdata)
-    while (offset < (searchdatalen - 16)):
-        if d.decrypt(packet, searchdata[offset:offset+16]) != '':
+    while offset <= searchdatalen - 16:
+        if d.decrypt(packet, searchdata[offset:offset+16]):
+            key: bytes = searchdata[offset:offset+16]
             if raw:
-                return ''.join(searchdata[offset + i] for i in range(0, 16))
+                return key
             else:
-                return ':'.join("%02x" % ord(searchdata[offset + i]) for i in range(0, 16))
+                return ':'.join("%02x" % b for b in key)
         else:
             offset+=1
     return None
@@ -355,21 +365,18 @@ def kbgetnetworkkey(pkts: Gen) -> Dict[str, str]:
         try:
             # Process MAC layer details
             zmacpayload = zmac.pktchop(packet)[-1]
-            if zmacpayload == None:
+            if not zmacpayload:
                 continue
 
             # Process NWK layer details
             znwkpayload = znwk.pktchop(zmacpayload)[-1]
-            if znwkpayload == None:
+            if not znwkpayload:
                 continue
 
             # Process the APS layer details
             zapschop = zaps.pktchop(znwkpayload)
-            if zapschop == None:
-                continue
-
             # See if this is an APS Command frame
-            apsfc = ord(zapschop[0])
+            apsfc = zapschop[0][0]
             if (apsfc & ZBEE_APS_FCF_FRAME_TYPE) != ZBEE_APS_FCF_CMD:
                 continue
 
@@ -379,7 +386,7 @@ def kbgetnetworkkey(pkts: Gen) -> Dict[str, str]:
                 continue
 
             # Ensure Security is Disabled
-            if (apsfc & ZBEE_APS_FCF_SECURITY) == 1:
+            if (apsfc & ZBEE_APS_FCF_SECURITY) != 0:
                 continue
 
             zapspayload = zapschop[-1]
@@ -390,12 +397,12 @@ def kbgetnetworkkey(pkts: Gen) -> Dict[str, str]:
                 continue
 
             # Check for APS command identifier Transport Key (0x05)
-            if ord(zapspayload[0]) != 5:
+            if zapspayload[0] != 5:
                 continue
 
             # Transport Key Frame, get the key type.  Network Key is 0x01, no
             # other keys should be sent in plaintext
-            if ord(zapspayload[1]) != 1:
+            if zapspayload[1] != 1:
                 continue
 
             # Reverse these fields
@@ -404,9 +411,9 @@ def kbgetnetworkkey(pkts: Gen) -> Dict[str, str]:
             srcaddr = zapspayload[27:35][::-1]
 
             key: Dict[str, str] = {}
-            key['key'] = ':'.join("%02x" % ord(networkkey[x]) for x in range(16))
-            key['dst'] = ':'.join("%02x" % ord(destaddr[x]) for x in range(8))
-            key['src'] = ':'.join("%02x" % ord(srcaddr[x]) for x in range(8))
+            key['key'] = ':'.join("%02x" % b for b in networkkey)
+            key['dst'] = ':'.join("%02x" % b for b in destaddr)
+            key['src'] = ':'.join("%02x" % b for b in srcaddr)
             return key
         except:
             continue

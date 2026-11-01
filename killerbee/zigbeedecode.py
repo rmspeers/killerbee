@@ -46,103 +46,105 @@ class ZigBeeNWKPacketParser:
     def pktchop(self, packet):
         '''
         Chops up the specified packet contents into a list of fields.  Does
-        not attempt to re-order the field values for parsing.  ''.join(X) will
-        reassemble original packet string.  Fields which may or may not be
-        present (such as the destination address) are empty if they are not
-        present, keeping the list elements consistent, as follows:
+        not attempt to re-order the field values for parsing.  b''.join(X) will
+        reassemble original packet bytes.  Fields which may or may not be
+        present (such as the destination address) are empty bytes if they are
+        not present, keeping the list elements consistent, as follows:
         Frame Control | DA | SA | Radius | Seq # | Dst IEEE Address | Src IEEE Address | MCast Ctrl | Src Route Subframe | Payload
 
         An exception is raised if the packet contents are too short to
         decode.
 
-        @type packet: String
+        @type packet: Bytes
         @param packet: Packet contents.
         @rtype: list
-        @return: Chopped contents of the ZigBee NWK packet into list elements.
+        @return: Chopped contents of the ZigBee NWK packet into list elements
+        (all of type bytes).
         '''
         if len(packet) < 8:
             raise Exception("Packet too small, %d bytes." % len(packet))
-        
+
         # Frame control field
-        fc = struct.unpack("<H",packet[0:2])[0]
+        fc = struct.unpack("<H", packet[0:2])[0]
 
         # FC | DA | SA | Radius | Seq #
-        pktchop = [packet[0:2], packet[2:4], packet[4:6], packet[6], packet[7]]
+        pktchop = [packet[0:2], packet[2:4], packet[4:6], packet[6:7], packet[7:8]]
         offset = 8
 
         # Check if the DA bit is set in the frame control field
         if (fc & ZBEE_NWK_FCF_EXT_DEST) != 0:
             pktchop.append(packet[offset:offset+8])
-            offset+=8
+            offset += 8
         else:
-            pktchop.append("")
+            pktchop.append(b"")
 
         # Check if the SA bit is set in the frame control field
         if (fc & ZBEE_NWK_FCF_EXT_SOURCE) != 0:
             pktchop.append(packet[offset:offset+8])
-            offset+=8
+            offset += 8
         else:
-            pktchop.append("")
+            pktchop.append(b"")
 
         # Check if the Multicast Control bit is set in the frame control field
         if (fc & ZBEE_NWK_FCF_MULTICAST) != 0:
-            pktchop.append(packet[offset])
-            offset+=1
+            pktchop.append(packet[offset:offset+1])
+            offset += 1
         else:
-            pktchop.append("")
+            pktchop.append(b"")
 
         # Check if the Source Route bit is set in the frame control field
         if (fc & ZBEE_NWK_FCF_SOURCE_ROUTE) != 0:
-            # Source Route Subfield has a format Count | Index | List
+            # Source Route Subframe has a format Count | Index | List
             # where Count and Index are 1-byte each, and list is a list of
-            # addresses for source routing count*2 long.
+            # 2-byte relay addresses, count*2 bytes long.
             relaycount = packet[offset]
-            relayindex = packet[offset+1]
-            relaylist = packet[offset+2:(relaycount*2)]
-            sourceroutesubframe = packet[relaycount + relayindex + relaylist]
+            sourceroutesubframe = packet[offset:offset + 2 + relaycount * 2]
             pktchop.append(sourceroutesubframe)
-            offset+=len(sourceroutesubframe)
+            offset += len(sourceroutesubframe)
         else:
-            pktchop.append("")
+            pktchop.append(b"")
 
         # Append remaining payload
         pktchop.append(packet[offset:])
 
         return pktchop
-        
+
     def hdrlen(self, packet):
         '''
         Returns the length of the ZigBee NWK header.
-        @type packet: String
+        @type packet: Bytes
         @param packet: Packet contents to evaluate for header length.
         @rtype: Int
-        @return: Length of the ZigBEE NWK header.
+        @return: Length of the ZigBee NWK header.
         '''
         # Frame control field
-        fc = struct.unpack("<H",packet[0:2])[0]
+        fc = struct.unpack("<H", packet[0:2])[0]
         plen = 8
 
         # Check if the DA bit is set in the frame control field
         if (fc & ZBEE_NWK_FCF_EXT_DEST) != 0:
-            plen+=8
+            plen += 8
 
         # Check if the SA bit is set in the frame control field
         if (fc & ZBEE_NWK_FCF_EXT_SOURCE) != 0:
-            plen+=8
+            plen += 8
+
+        # Check if the Multicast Control bit is set in the frame control field
+        if (fc & ZBEE_NWK_FCF_MULTICAST) != 0:
+            plen += 1
 
         # Check if the Source Route bit is set in the frame control field
         if (fc & ZBEE_NWK_FCF_SOURCE_ROUTE) != 0:
-            # relay list based on relay count * 2
-            plen+= (ord(packet[plen])*2)
             # relay count and relay index fields
-            plen+=2 
-        
+            # plus relay list based on relay count * 2
+            plen += 2 + packet[plen] * 2
+
         return plen
 
     def payloadlen(self, packet):
         '''
         Returns the length of the NWK payload.
-        @type packet: String
+        @type packet: Bytes
         @param packet: Packet contents to evaluate for header length.
         @rtype: Int
         @return: Length of the NWK payload.
@@ -159,171 +161,102 @@ class ZigBeeAPSPacketParser:
 
         return
 
+    @staticmethod
+    def _layout(fc):
+        '''
+        Returns the sizes in bytes of the optional addressing fields which
+        follow the APS frame control byte, as a tuple of:
+        (Dst Endpoint, Group Address, Cluster ID, Profile ID, Src Endpoint)
+        '''
+        apsftype = fc & ZBEE_APS_FCF_FRAME_TYPE
+        apsdeliverymode = (fc & ZBEE_APS_FCF_DELIVERY_MODE) >> 2
+
+        if apsftype == ZBEE_APS_FCF_DATA:
+            if apsdeliverymode == ZBEE_APS_FCF_UNICAST or apsdeliverymode == ZBEE_APS_FCF_BCAST:
+                return (1, 0, 2, 2, 1)
+            elif apsdeliverymode == ZBEE_APS_FCF_INDIRECT:
+                return (0, 0, 2, 2, 1)
+            else:   # Group delivery
+                return (0, 2, 2, 2, 1)
+        elif apsftype == ZBEE_APS_FCF_CMD:
+            if apsdeliverymode == ZBEE_APS_FCF_GROUP:
+                return (0, 2, 0, 0, 0)
+            return (0, 0, 0, 0, 0)
+        elif apsftype == ZBEE_APS_FCF_ACK:
+            if apsdeliverymode == ZBEE_APS_FCF_GROUP:
+                return (1, 2, 2, 2, 1)
+            return (1, 0, 2, 2, 1)
+        return (0, 0, 0, 0, 0)
+
     def pktchop(self, packet):
         '''
         Chops up the specified packet contents into a list of fields.  Does
-        not attempt to re-order the field values for parsing.  ''.join(X) will
-        reassemble original packet string.  Fields which may or may not be
-        present (such as the destination endpoint) are empty if they are not
-        present, keeping the list elements consistent, as follows:
+        not attempt to re-order the field values for parsing.  b''.join(X) will
+        reassemble original packet bytes.  Fields which may or may not be
+        present (such as the destination endpoint) are empty bytes if they are
+        not present, keeping the list elements consistent, as follows:
         Frame Control | Dst Endpoint | Group Address | Cluster Identifier | Profile Identifier | Source Endpoint | APS Counter | Fragmentation | Block Number | Payload
 
         An exception is raised if the packet contents are too short to
         decode.
 
-        @type packet: String
+        @type packet: Bytes
         @param packet: Packet contents.
         @rtype: list
-        @return: Chopped contents of the ZigBee APS packet into list elements.
+        @return: Chopped contents of the ZigBee APS packet into list elements
+        (all of type bytes).
         '''
         if len(packet) < 3:
             raise Exception("Packet too small, %d bytes." % len(packet))
-        
+
         # Frame control field
         fc = packet[0]
-        pktchop = [fc,]
+        pktchop = [packet[0:1]]
         offset = 1
 
-        # Identify the APS frame type
-        apsftype = ord(fc) & ZBEE_APS_FCF_FRAME_TYPE
-        apsdeliverymode = (ord(fc) & ZBEE_APS_FCF_DELIVERY_MODE >> 2)
-
-        if apsftype == ZBEE_APS_FCF_DATA:
-            # APS Data frames are FC | Dst Endpoint | Group Address | Cluster ID | Src Endpoint | APS Counter
-
-            # Get Delivery Mode value
-            if apsdeliverymode == 0:        # Normal Unicast Delivery
-                pktchop.append(packet[offset])              # Dst Endpoint
-                pktchop.append("")                          # Group Address (not present in this mode)
-                pktchop.append(packet[offset+1:offset+3])   # Cluster ID
-                pktchop.append(packet[offset+3:offset+5])   # Profile ID
-                pktchop.append(packet[offset+5])            # Source Endpoint
-                offset += 6
-            elif apsdeliverymode == 1:   # Indirect Delivery
-                pktchop.append("")                          # Dst Endpoint (not present)
-                pktchop.append("")                          # Group Address (not present)
-                pktchop.append(packet[offset:offset+2])     # Cluster ID
-                pktchop.append(packet[offset+2:offset+4])   # Profile ID
-                pktchop.append(packet[offset+4])            # Source Endpoint
-                offset += 5
-            elif apsdeliverymode == 2:   # Broadcast Delivery
-                pktchop.append(packet[offset])              # Dst Endpoint
-                pktchop.append("")                          # Group Address (not present)
-                pktchop.append(packet[offset+1:offset+3])   # Cluster ID
-                pktchop.append(packet[offset+3:offset+5])   # Profile ID
-                pktchop.append(packet[offset+5])            # Source Endpoint
-                offset += 6
-            else:           # Group Delivery
-                pktchop.append("")                          # Dst Endpoint 
-                pktchop.append(packet[offset:offset+2])     # Group Address (not present)
-                pktchop.append(packet[offset+2:offset+4])   # Cluster ID
-                pktchop.append(packet[offset+4:offset+6])   # Profile ID
-                pktchop.append(packet[offset+6])            # Source Endpoint
-                offset += 7
-
-        elif apsftype == ZBEE_APS_FCF_CMD:
-            # APS Command frames are FC | Group Address | APS Counter
-            pktchop.append("")                          # Dst Endpoint (not present)
-
-            # Get Delivery Mode value
-            if apsdeliverymode == 2:      # Group Delivery
-                pktchop.append(packet[offset:offset+2])     # Group Address
-                offset += 2
-            else:
-                pktchop.append("")                          # Group Address (not present)
-
-            pktchop.append("")                          # Cluster ID (not present)
-            pktchop.append("")                          # Source Endpoint (not present)
-
-        elif apsftype == ZBEE_APS_FCF_ACK:
-            if apsdeliverymode == 0:        # Normal Unicast Delivery
-                pktchop.append(packet[offset])              # Dst Endpoint
-                pktchop.append("")                          # Group Address (not present in this mode)
-                pktchop.append(packet[offset+1:offset+3])   # Cluster ID
-                pktchop.append(packet[offset+3:offset+5])   # Profile ID
-                pktchop.append(packet[offset+5])            # Source Endpoint
-                offset += 6
-            elif apsdeliverymode == 1:   # Indirect Delivery
-                pktchop.append(packet[offset])              # Dst Endpoint
-                pktchop.append("")                          # Group Address (not present)
-                pktchop.append(packet[offset+1:offset+3])     # Cluster ID
-                pktchop.append(packet[offset+3:offset+5])   # Profile ID
-                pktchop.append(packet[offset+5])            # Source Endpoint
-                offset += 6
-            elif apsdeliverymode == 2:   # Broadcast Delivery
-                pktchop.append(packet[offset])              # Dst Endpoint
-                pktchop.append("")                          # Group Address (not present)
-                pktchop.append(packet[offset+1:offset+3])   # Cluster ID
-                pktchop.append(packet[offset+3:offset+5])   # Profile ID
-                pktchop.append(packet[offset+5])            # Source Endpoint
-                offset += 6
-            else:           # Group Delivery
-                pktchop.append(packet[offset])              # Dst Endpoint
-                pktchop.append(packet[offset:offset+3])     # Group Address (not present)
-                pktchop.append(packet[offset+3:offset+5])   # Cluster ID
-                pktchop.append(packet[offset+5:offset+7])   # Profile ID
-                pktchop.append(packet[offset+7])            # Source Endpoint
-                offset += 8
+        # Optional addressing fields, depending on frame and delivery type
+        for size in self._layout(fc):
+            pktchop.append(packet[offset:offset + size])
+            offset += size
 
         # APS Counter
-        pktchop.append(packet[offset])
-        offset+= 1
+        pktchop.append(packet[offset:offset+1])
+        offset += 1
 
         # Extended Header (fragmentation)
-        if ord(fc) & ZBEE_APS_FCF_EXT_HEADER:
-            # if fragmentation is set get another byte as block number
-            if packet[offset] != 0x00:
-                pktchop.append(packet[offset])
-                offset+= 1
-            pktchop.append(packet[offset])
-            offset+= 1
+        if fc & ZBEE_APS_FCF_EXT_HEADER:
+            # Fragmentation byte, followed by a block number if fragmented
+            fragmentation = packet[offset:offset+1]
+            offset += 1
+            pktchop.append(fragmentation)
+            if fragmentation and fragmentation[0] != 0x00:
+                pktchop.append(packet[offset:offset+1])
+                offset += 1
+            else:
+                pktchop.append(b"")
         else:
-            pktchop.append("") # fragmentation
-            pktchop.append("") # block number
+            pktchop.append(b"")  # fragmentation
+            pktchop.append(b"")  # block number
 
         # Payload
         pktchop.append(packet[offset:])
         return pktchop
-        
+
     def hdrlen(self, packet):
         '''
-        Returns the length of the ZigBee NWK header.
-        @type packet: String
+        Returns the length of the ZigBee APS header.
+        @type packet: Bytes
         @param packet: Packet contents to evaluate for header length.
         @rtype: Int
-        @return: Length of the ZigBEE NWK header.
+        @return: Length of the ZigBee APS header.
         '''
-        # Frame control field
         fc = packet[0]
-        pktchop = [fc,]
-        plen = 1
+        plen = 1 + sum(self._layout(fc))
 
-        # Identify the APS frame type
-        apsftype = ord(fc) & ZBEE_APS_FCF_FRAME_TYPE
-        apsdeliverymode = (ord(fc) & ZBEE_APS_FCF_DELIVERY_MODE >> 2)
+        plen += 1  # APS Counter
 
-        if apsftype == ZBEE_APS_FCF_DATA:
-            if apsdeliverymode == 0 or apsdeliverymode == 2:
-                plen += 6
-            elif apsdeliverymode == 1:
-                plen += 5
-            else:
-                plen += 7
-
-        elif apsftype == ZBEE_APS_FCF_CMD:
-            if apsdeliverymode == 2:
-                plen += 2
-
-        elif apsftype == ZBEE_APS_FCF_ACK:
-            if apsdeliverymode == 3:
-                plen += 8
-            else:
-                plen += 6
-        
-        plen += 1 # APS Counter
-
-        # fragmentation + packet number if true
-        if ord(fc) & ZBEE_APS_FCF_EXT_HEADER:
+        # fragmentation + block number if fragmented
+        if fc & ZBEE_APS_FCF_EXT_HEADER:
             if packet[plen] != 0x00:
                 plen += 1
             plen += 1
@@ -333,7 +266,7 @@ class ZigBeeAPSPacketParser:
     def payloadlen(self, packet):
         '''
         Returns the length of the APS payload.
-        @type packet: String
+        @type packet: Bytes
         @param packet: Packet contents to evaluate for header length.
         @rtype: Int
         @return: Length of the APS payload.

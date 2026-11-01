@@ -24,28 +24,32 @@ def fcf_bytes(ftype=1, sec=False, intra=True, daddr=3, saddr=3):
     return struct.pack("<H", v)
 
 
-def secured_frame(key=KEY, corrupt_mic=False, seclevel=6):
+def _pad16(b):
+    return b + b"\x00" * (-len(b) % 16)
+
+
+def secured_frame(key=KEY, corrupt_mic=False, seclevel=6, plain=b"\x42"):
+    """Build a MAC-secured frame with an independent, from-the-spec CCM*
+    (AES-ECB based) implementation, 8-byte MIC, 13-byte nonce."""
     hdr = fcf_bytes(sec=True) + b"\x07" + b"\x34\x12" + DA + SA
     ctr = b"\x10\x20\x30\x40"
     nonce = SA[::-1] + ctr[::-1] + bytes([seclevel])
     filler = b"\xaa"
     aux = bytes([seclevel]) + ctr + filler
-    plain = b"\x42"
     a = hdr + aux
     add = struct.pack(">H", len(a)) + a
-    add += b"\x00" * (16 - len(add) % 16)
-    B = b"\x59" + nonce + b"\x00\x01" + add + plain + b"\x00" * 15
+    B = bytes([0x59]) + nonce + struct.pack(">H", len(plain)) + _pad16(add) + _pad16(plain)
     ecb = AES.new(key, AES.MODE_ECB)
     x = b"\x00" * 16
     for i in range(0, len(B), 16):
         blk = bytes(p ^ q for p, q in zip(x, B[i:i + 16]))
         x = ecb.encrypt(blk)
     T = x[:8]
-    A0 = b"\x01" + nonce + b"\x00\x00"
-    A1 = b"\x01" + nonce + b"\x00\x01"
-    S0 = ecb.encrypt(A0)
-    S1 = ecb.encrypt(A1)
-    c = bytes([plain[0] ^ S1[0]])
+    S0 = ecb.encrypt(b"\x01" + nonce + b"\x00\x00")
+    c = b""
+    for n in range((len(plain) + 15) // 16):
+        S = ecb.encrypt(b"\x01" + nonce + struct.pack(">H", n + 1))
+        c += bytes(p ^ q for p, q in zip(plain[n * 16:(n + 1) * 16], S))
     U = bytes(t ^ s for t, s in zip(T, S0))
     if corrupt_mic:
         U = bytes([U[0] ^ 1]) + U[1:]
@@ -87,7 +91,7 @@ def test_pktchop_beacon(p):
     assert chop[4] == b"\xaa\xbb" and chop[5] == b"\xcc\xdd"
     assert chop[6][0] == b"\xff\xcf"
     assert chop[6][6] == b"\x01" * 8
-    assert chop[6][8] == 9
+    assert chop[6][8] == b"\x09"
     assert chop[7] == b"\xee"
     assert body
 
@@ -98,7 +102,8 @@ def test_pktchop_beacon_truncated(p):
 
 
 @pytest.mark.parametrize("daddr,saddr,intra", [
-    (3, 3, True), (2, 2, True), (2, 2, False), (0, 0, True), (3, 3, False)])
+    (3, 3, True), (2, 2, True), (2, 2, False), (0, 0, True), (3, 3, False),
+    (3, 2, True), (2, 3, True), (0, 2, False), (2, 0, True)])
 def test_pktchop_data(p, daddr, saddr, intra):
     pkt = fcf_bytes(daddr=daddr, saddr=saddr, intra=intra) + b"\x09" + b"\x34\x12"
     pkt += b"D" * {3: 8, 2: 2, 0: 0}[daddr]
@@ -109,21 +114,22 @@ def test_pktchop_data(p, daddr, saddr, intra):
     chop = p.pktchop(pkt)
     assert chop[1] == b"\x09"
     assert chop[2] == b"\x34\x12"
-    assert chop[7] == b"PAYLOAD" or chop[7].endswith(b"PAYLOAD")
-    if daddr == 3:
-        assert chop[3] == b"D" * 8
+    size = {3: 8, 2: 2, 0: 0}
+    assert chop[3] == b"D" * size[daddr]
+    assert chop[5] == b"S" * size[saddr]
+    assert chop[7] == b"PAYLOAD"
     if not intra:
         assert chop[4] == b"\x77\x77"
 
 
 def test_pktchop_no_payload(p):
     pkt = fcf_bytes(daddr=0, saddr=0) + b"\x01\x34\x12"
-    assert p.pktchop(pkt)[7] == ""
+    assert p.pktchop(pkt)[7] == b""
 
 
 def test_nonce_unsecured(p):
     pkt = fcf_bytes(sec=False) + b"\x00" * 30
-    assert p.nonce(pkt) == ""
+    assert p.nonce(pkt) == b""
 
 
 def test_nonce_secured(p):
@@ -151,50 +157,29 @@ def test_decrypt_short_payload(p):
         p.decrypt(pkt, KEY)
 
 
-class _CallableCtrAES:
-    """Shim emulating the legacy PyCrypto callable-counter CTR API on top of
-    pycryptodome, so the decrypt() logic past the AES.new(...CTR...) call can
-    be exercised."""
-    MODE_CTR = AES.MODE_CTR
-    MODE_CBC = AES.MODE_CBC
-    MODE_ECB = AES.MODE_ECB
-
-    @staticmethod
-    def new(key, mode, *args, **kwargs):
-        if mode == AES.MODE_CTR and callable(kwargs.get("counter")):
-            counter = kwargs["counter"]
-            ecb = AES.new(key, AES.MODE_ECB)
-
-            class _C:
-                def decrypt(self, data):
-                    out = b""
-                    for i in range(0, len(data), 16):
-                        ks = ecb.encrypt(counter())
-                        out += bytes(a ^ b for a, b in zip(data[i:i + 16], ks))
-                    return out
-            return _C()
-        return AES.new(key, mode, *args, **kwargs)
-
-
-@pytest.fixture
-def shim(monkeypatch):
-    import killerbee.dot154decode as mod
-    monkeypatch.setattr(mod, "AES", _CallableCtrAES)
-
-
-@pytest.mark.xfail(strict=False, raises=TypeError,
-                   reason="py3/pycryptodome: AES.new(MODE_CTR, counter=<callable>) "
-                          "is unsupported (needs Crypto.Util.Counter)")
-def test_decrypt_real_aes(p):
+def test_decrypt_valid(p):
     pkt, plain = secured_frame()
     assert p.decrypt(pkt, KEY) == plain
 
 
-def test_decrypt_valid(p, shim):
-    pkt, plain = secured_frame()
+@pytest.mark.parametrize("n", [1, 15, 16, 17, 32, 33, 100])
+def test_decrypt_multiblock_payloads(p, n):
+    plain = bytes((i * 7 + 1) & 0xff for i in range(n))
+    pkt, _ = secured_frame(plain=plain)
     assert p.decrypt(pkt, KEY) == plain
 
 
-def test_decrypt_bad_mic(p, shim):
+def test_decrypt_wrong_key(p):
+    pkt, _ = secured_frame()
+    assert p.decrypt(pkt, bytes(16)) == b""
+
+
+def test_decrypt_not_secured_frame(p):
+    # security level byte looks right but frame security is not enabled
+    pkt = fcf_bytes(sec=False) + b"\x07" + b"\x34\x12" + DA + SA + b"\x06" + b"\x00" * 20
+    assert p.decrypt(pkt, KEY) == b""
+
+
+def test_decrypt_bad_mic(p):
     pkt, _ = secured_frame(corrupt_mic=True)
-    assert p.decrypt(pkt, KEY) == ""
+    assert p.decrypt(pkt, KEY) == b""

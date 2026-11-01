@@ -126,8 +126,11 @@ def test_logger_no_datasource(dblog):
 
 def test_logger_connect_fail(dblog):
     dblog.fake.holder["fail"] = True
-    with pytest.raises(Exception):
+    with pytest.raises(Exception) as exc:
         dblog.DBLogger("src")
+    # the original error is reported, with no formatting failure
+    assert str(exc.value).startswith("DBLogger was unable to connect to the database: no db ")
+    assert "config.py" in str(exc.value)
 
 
 def test_logger_connect_none(dblog):
@@ -138,7 +141,7 @@ def test_logger_connect_none(dblog):
 
 def test_logger_init_and_close(dblog):
     lg, db = make_logger(dblog)
-    assert lg.ds_id == (5,)
+    assert lg.ds_id == 5
     lg.set_channel(15, 1)
     assert (lg.channel, lg.page) == (15, 1)
     lg.close()
@@ -158,7 +161,7 @@ def test_logger_unknown_datasource(dblog, capsys):
 def test_add_location_existing_and_new(dblog):
     lg, db = make_logger(dblog)
     db.selects["locations"] = [(9,)]
-    assert lg.add_location((1.0, 2.0, 3.0)) == (9,)
+    assert lg.add_location((1.0, 2.0, 3.0)) == 9
     db.selects["locations"] = []
     assert lg.add_location((1.0, 2.0, 3.0)) == 42
     assert db.commits == 1
@@ -179,7 +182,7 @@ def test_add_location_insert_fail(dblog):
 def test_add_device_existing_new_null(dblog):
     lg, db = make_logger(dblog)
     db.selects["devices"] = [(3,)]
-    assert lg.add_device(0x1234, 0xabcd) == (3,)
+    assert lg.add_device(0x1234, 0xabcd) == 3
     db.selects["devices"] = []
     assert lg.add_device(0x1234, 0xabcd) == 42
     db.selects["devices"] = []
@@ -235,6 +238,21 @@ def test_add_packet_with_fake_scapy(dblog):
     assert "loc_id=" in sql and "channel=20" in sql and "page=3" in sql
 
 
+def test_add_packet_full_none(dblog):
+    lg, db = make_logger(dblog)
+    lg.add_packet(scapy=FakeScapy(), bytes=FRAME, rssi=-2)
+    assert "rssi=-2" in db.executed[-1][0]
+
+
+def test_add_packet_ids_used_in_sql(dblog):
+    lg, db = make_logger(dblog)
+    db.selects["devices"] = [(11,)]
+    db.selects["locations"] = [(4,)]
+    lg.add_packet(full={"location": (1.0, 2.0, 3.0)}, scapy=FakeScapy(), bytes=FRAME)
+    sql = db.executed[-1][0]
+    assert "ds_id=5," in sql and "source=11" in sql and "dest=11" in sql and "loc_id=4" in sql
+
+
 def test_add_packet_missing_attrs(dblog):
     lg, db = make_logger(dblog)
 
@@ -253,7 +271,6 @@ def test_add_packet_real_scapy(dblog):
     db.selects["devices"] = [(1,), (2,)]
     # Real Dot15d4 dissection of a data frame (scapy imported lazily in add_packet)
     frame = bytes.fromhex("61880122340100ffff0000aabb")
-    try:
-        lg.add_packet(full={}, bytes=frame)
-    except (AttributeError, TypeError) as e:  # scapy field names differ by version
-        pytest.xfail("scapy Dot15d4 lacks expected fcf_* attributes: %r" % e)
+    lg.add_packet(full={}, bytes=frame)
+    sql = db.executed[-1][0]
+    assert "fcf_frametype=1" in sql and "seqnum=1" in sql
