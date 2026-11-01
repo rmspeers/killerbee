@@ -3,16 +3,13 @@
 ## Setup
 
 ```
-$ pip3 install nose2
-$ cd tests/
-$ APIMOTE_DEVSTRING=/dev/ttyUSB0 nose2 -v
+$ pip3 install -e '.[test]'
+$ pytest
 ```
 
 ## Test Coverage
 
-Tests have currently only been written for and run using an Apimote, for many tests interaction with the device is necessary and the environment variable `APIMOTE_DEVSTRING` should point to the device.
-
-A few functions for scapy_extension require reading packet or extracting information from captures, these fixtures are currently not in place to test these functions.
+The suite runs with no hardware: radios are replaced by fakes (a fake GoodFET serial port, mocked USB and sockets) provided in `tests/conftest.py`. To run the Apimote tests against a real device, set `APIMOTE_DEVSTRING`, for example `APIMOTE_DEVSTRING=/dev/ttyUSB0 pytest -m hardware`. Package coverage is over 95%: run `pytest --cov=killerbee`. The command-line scripts in `tools/` are not yet covered by tests.
 
 ### KilleBbee Core
 
