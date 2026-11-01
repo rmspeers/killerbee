@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/usr/bin/env python3
 
 #  zbtestcrypt - test encryption by decrypting and re-encrypting
 # 
@@ -81,46 +81,46 @@ if __name__ == '__main__':
         show_dev()
         exit(False)
 
-    print
+    print()
 
     if args.pcapfile == None and args.dsnafile == None:
-        print >>sys.stderr, "ERROR: Must specify a capture file using -r (libpcap) or -R (Daintree SNA)"
+        print("ERROR: Must specify a capture file using -r (libpcap) or -R (Daintree SNA)", file=sys.stderr)
         exit(True)
 
     if args.pcapfile != None and args.dsnafile != None:
-        print >>sys.stderr, "ERROR: Must specify only one of -r (libpcap) or -R (Daintree SNA)"
+        print("ERROR: Must specify only one of -r (libpcap) or -R (Daintree SNA)", file=sys.stderr)
         exit(True)
 
     if args.network_key:
         try:
             nwk_key= args.network_key.replace(':','')
             nwk_key= nwk_key.decode('hex')
-            print ' NWK_KEY:', nwk_key.encode('hex').upper()
+            print(' NWK_KEY:', nwk_key.hex().upper())
         except:
-            print >>sys.stderr, "ERROR: Invalid NWK_KEY"
+            print("ERROR: Invalid NWK_KEY", file=sys.stderr)
             exit(True)
     else:
         nwk_key= None
     if nwk_key and len(nwk_key) != 16:
-        print >>sys.stderr, "ERROR: Must specify 16 byte NWK_KEY in HEX"
+        print("ERROR: Must specify 16 byte NWK_KEY in HEX", file=sys.stderr)
         exit(True)
 
     if args.link_key:
         try:
             link_key= args.link_key.replace(':','')
             link_key= link_key.decode('hex')
-            print 'LINK_KEY:', link_key.encode('hex').upper()
+            print('LINK_KEY:', link_key.hex().upper())
         except:
-            print >>sys.stderr, "ERROR: Invalid LINK_KEY"
+            print("ERROR: Invalid LINK_KEY", file=sys.stderr)
             exit(True)
     else:
         link_key= None
     if link_key and len(link_key) != 16:
-        print >>sys.stderr, "ERROR: Must specify 16 byte LINK_KEY in HEX"
+        print("ERROR: Must specify 16 byte LINK_KEY in HEX", file=sys.stderr)
         exit(True)
 
     if (args.begin or args.end) and args.packet_range:
-        print >>sys.stderr, "ERROR: Specify begin/end or packet_range"
+        print("ERROR: Specify begin/end or packet_range", file=sys.stderr)
         exit(True)
 
     if args.packet_range:
@@ -142,11 +142,11 @@ if __name__ == '__main__':
     if args.transmit_original or args.transmit_crypted:
         kb = KillerBee(device=args.interface)
         if not kb.is_valid_channel(args.channel, args.subghz_page):
-            print >>sys.stderr, "ERROR: Invalid channel/subghz page"
+            print("ERROR: Invalid channel/subghz page", file=sys.stderr)
             exit(True)
 
-    print
-    print '%d packets read from %s' % (len(data), fname)
+    print()
+    print('%d packets read from %s' % (len(data), fname))
 
     count= 0
     testcount= 0
@@ -164,13 +164,13 @@ if __name__ == '__main__':
             break
         if packets and not count in packets:
             continue
-        print
-        print 'Packet:', count
+        print()
+        print('Packet:', count)
         #print packet.layers(False) # debug
-        print packet.layers() # debug
-        print '  ', packet.summary()
+        print(packet.layers())  # debug
+        print('  ', packet.summary())
         if args.verbose:
-            print '  ', repr(packet)
+            print('  ', repr(packet))
 
         # check for transport keys
         if args.search_keys:
@@ -191,7 +191,7 @@ if __name__ == '__main__':
 
         # ignore frames with no encrypted payload
         if not ZigbeeNWK in packet or not ZigbeeSecurityHeader in packet:
-            print '    no payload - skipping!'
+            print('    no payload - skipping!')
             continue
 
         if ZigbeeSecurityHeader in packet:
@@ -205,20 +205,20 @@ if __name__ == '__main__':
                     if packet[ZigbeeNWK].ext_src > ext_adresses[packet[Dot15d4Data].dest_panid][packet[Dot15d4Data].src_addr]:
                         ext_adresses[packet[Dot15d4Data].dest_panid][packet[Dot15d4Data].src_addr] = packet[ZigbeeNWK].ext_src
                 except:
-                    print 'adding', packet[ZigbeeNWK].ext_src, packet[Dot15d4Data].src_addr
+                    print('adding', packet[ZigbeeNWK].ext_src, packet[Dot15d4Data].src_addr)
                     ext_adresses[packet[Dot15d4Data].dest_panid][packet[Dot15d4Data].src_addr] = packet[ZigbeeNWK].ext_src
             # only decrypt if APS layer is not already in the plain
             if not ZigbeeAppDataPayload in packet and packet[ZigbeeSecurityHeader].data != '':
-                print '   decrypting NWK...'
+                print('   decrypting NWK...')
                 stat, decrypted = crypt(packet)
             else:
                 stat, decrypted = True, copy.copy(packet)
             if stat:
-                print '     ', decrypted.summary()
+                print('     ', decrypted.summary())
                 if args.verbose:
-                    print '     ', repr(decrypted)
+                    print('     ', repr(decrypted))
                 if args.verbose > 1:
-                    print ' HEX:', str(decrypted).encode('hex')
+                    print(' HEX:', bytes(decrypted).hex())
 
                 # If we have an APS layer and it's encrypted, build new packet with ZigbeeNWK so we can decrypt it
                 if ZigbeeAppDataPayload in decrypted and ZigbeeSecurityHeader in decrypted and decrypted[ZigbeeSecurityHeader].data != '':
@@ -236,25 +236,25 @@ if __name__ == '__main__':
                                 pass
                             tmppkt[ZigbeeNWK].ext_src= packet[Dot15d4Data].src_addr
                     #tmppkt[ZigbeeNWK].ext_src = ext_adresses[packet[Dot15d4Data].dest_panid][packet[Dot15d4Data].src_addr]
-                    print 'tmppkt[ZigbeeNWK].ext_src', tmppkt[ZigbeeNWK].ext_src
-                    print '      decrypting APS...'
+                    print('tmppkt[ZigbeeNWK].ext_src', tmppkt[ZigbeeNWK].ext_src)
+                    print('      decrypting APS...')
                     if args.verbose:
-                        print '        ', repr(tmppkt)
+                        print('        ', repr(tmppkt))
                     if args.verbose > 1:
-                        print ' HEX:', str(tmppkt).encode('hex')
+                        print(' HEX:', bytes(tmppkt).hex())
                     stat, app_decrypt= crypt(tmppkt)
                     if stat:
                         aps_passed += 1
-                        print '        ', app_decrypt.summary()
+                        print('        ', app_decrypt.summary())
                         if args.verbose:
-                            print '        ', repr(app_decrypt)
+                            print('        ', repr(app_decrypt))
                         if args.verbose > 1:
-                            print ' HEX:', str(app_decrypt).encode('hex')
+                            print(' HEX:', bytes(app_decrypt).hex())
                     else:
                         aps_failed += 1
-                        print '         FAILED:', app_decrypt
+                        print('         FAILED:', app_decrypt)
     
-                    print '      encrypting APS...'
+                    print('      encrypting APS...')
                     tmppkt = copy.copy(packet)
                     tmppkt[ZigbeeNWK].remove_payload()
                     tmppkt /= decrypted[ZigbeeAppDataPayload]
@@ -268,72 +268,72 @@ if __name__ == '__main__':
                             except:
                                 pass
                             #tmppkt[ZigbeeNWK].ext_src= packet[Dot15d4Data].src_addr
-                        print 'set tmppkt[ZigbeeNWK].ext_src!', tmppkt[ZigbeeNWK].ext_src
+                        print('set tmppkt[ZigbeeNWK].ext_src!', tmppkt[ZigbeeNWK].ext_src)
                     tmppkt[ZigbeeNWK].ext_src = ext_adresses[packet[Dot15d4Data].dest_panid][packet[Dot15d4Data].src_addr]
                     if args.verbose:
-                        print '          ', repr(tmppkt)
+                        print('          ', repr(tmppkt))
                     stat, recrypt = crypt(tmppkt, data= app_decrypt, encrypt= True)
                     if stat:
                         decrypted.data= recrypt.data
                         decrypted.mic= recrypt.mic
                         if args.verbose:
-                            print '          ', repr(decrypted)
+                            print('          ', repr(decrypted))
                     else:
-                        print '          ', recrypt
+                        print('          ', recrypt)
 
-                print '   encrypting NWK...'
+                print('   encrypting NWK...')
                 stat, newpkt= crypt(packet, data= decrypted, encrypt= True)
                 if stat:
                     if args.verbose:
-                        print '  ', repr(newpkt)
+                        print('  ', repr(newpkt))
                 else:
-                    print '     ', newpkt
+                    print('     ', newpkt)
                 if newpkt == packet:
-                    print '   Packet match: OK'
+                    print('   Packet match: OK')
                     passed += 1
                 else:
-                    print '   Packet match: FAILED!'
+                    print('   Packet match: FAILED!')
                     failed += 1
 
             # NWK decrypt failed
             else:
-                print '     FAILED:', decrypted
+                print('     FAILED:', decrypted)
                 newpkt= None
                 failed += 1
 
         if args.transmit_original:
-            print '      transmitting ORIGINAL on channel', args.channel
+            print('      transmitting ORIGINAL on channel', args.channel)
             try:
-                kb.inject(str(packet), args.channel, 1, args.delay, page= args.subghz_page)
-                print '        OK'
+                kb.inject(bytes(packet), args.channel, 1, args.delay, page= args.subghz_page)
+                print('        OK')
                 #debug
-                print packet.command()
-		for x in str(packet):
-			print '0x%02x' % ord(x),
-		print
+                print(packet.command())
+                for x in bytes(packet):
+                    print('0x%02x' % x, end=' ')
+                print()
             except:
-                print '        FAILED!'
+                print('        FAILED!')
         if args.transmit_crypted and newpkt:
-            print '      transmitting RE-ENCRYPTED on channel', args.channel
+            print('      transmitting RE-ENCRYPTED on channel', args.channel)
             try:
-                kb.inject(str(packet), args.channel, 1, args.delay, page= args.subghz_page)
-                print '        OK'
+                kb.inject(bytes(packet), args.channel, 1, args.delay, page= args.subghz_page)
+                print('        OK')
             except:
-                print '        FAILED!'
+                print('        FAILED!')
         testcount += 1
 
-    print ext_adresses
+    print(ext_adresses)
 
-    print
-    print '%d of %d packets tested' % (testcount, len(data))
-    print '  NWK crypto passed:', passed
-    print '  NWK crypto failed:', failed
-    print '    APS crypto passed:', aps_passed
-    print '    APS crypto failed:', aps_failed
+    print()
+    print('%d of %d packets tested' % (testcount, len(data)))
+    print('  NWK crypto passed:', passed)
+    print('  NWK crypto failed:', failed)
+    print('    APS crypto passed:', aps_passed)
+    print('    APS crypto failed:', aps_failed)
 
     if args.search_keys:
-        print
-        print '%d key(s) found:' % len(transport_keys)
+        print()
+        print('%d key(s) found:' % len(transport_keys))
         for key in transport_keys:
-            print '  packet: %d\n    type: %s\n     key: %s (%s)\n     seq: %d\n     src: %s\n    dest: %s' % (key[0], key[1], key[2].encode('hex'), key[2][::-1].encode('hex'), key[3], key[4], key[5])
+            print('  packet: %d\n    type: %s\n     key: %s (%s)\n     seq: %d\n     src: %s\n    dest: %s' % (key[0], key[1], key[2].hex(), key[2][::-1].hex(), key[3], key[4], key[5]))
     exit(False)
