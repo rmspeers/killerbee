@@ -18,6 +18,7 @@ dependencies = [
     "pyusb>=1.0",
     "pycryptodome",
     "scapy>=2.4.3",
+    "urllib3>=1.26",
 ]
 
 [project.optional-dependencies]
