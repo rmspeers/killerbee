@@ -515,7 +515,6 @@ def test_isfreakduino(monkeypatch):
     assert kbu.isfreakduino("/dev/x") is False
 
 
-@pytest.mark.xfail(strict=False, reason="GoodFETatmel128.writecmd writes str via serial.write(chr(app)) -> TypeError on py3")
 def test_iszigduino_with_fake_goodfet(apimote_env, clean_board):
     assert kbu.iszigduino(apimote_env) is True
 

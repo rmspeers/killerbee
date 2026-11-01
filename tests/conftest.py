@@ -105,6 +105,9 @@ class FakeGoodFETSerial:
             self._handle(app, verb, data)
 
     def _handle(self, app, verb, data):
+        if app == 0x00 and verb == 0x81:      # monitor echo, as real firmware does
+            self._queue_reply(app, verb, data)
+            return
         if app != self.CCSPIAPP:
             self._queue_reply(app, verb, b"")
             return
