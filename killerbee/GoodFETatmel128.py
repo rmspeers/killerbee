@@ -1,9 +1,7 @@
 # GoodFETclient to interface zigduino/atmel128 radio
 # forked by bx from code by neighbor Travis Goodspeed
 from .GoodFETAVR import GoodFETAVR # type: ignore # type: ignore
-import sys, binascii, os, array, time, glob, struct # type: ignore
-
-fmt = ("B", "<H", None, "<L")
+import sys, binascii, os, array, time, glob # type: ignore
 
 class GoodFETatmel128rfa1(GoodFETAVR):
     ATMELRADIOAPP = 0x53
@@ -21,7 +19,7 @@ class GoodFETatmel128rfa1(GoodFETAVR):
         if self.connected == 0:
             if (not (attemptlimit == None)) and (attemptlimit <= 1):
                 # it always takes at least 2 tries
-                attemptlimit == 2
+                attemptlimit = 2
 
             # Make timeout None to wait forever, 0 for non-blocking mode.
             import serial; # type: ignore
@@ -68,13 +66,13 @@ class GoodFETatmel128rfa1(GoodFETAVR):
                 )
 
             self.verb=0;
-            self.data=""
+            self.data=b""
             attempts=0;
             self.connected=0;
 
             while self.connected==0:
                 self.serialport.setDTR(False)
-                while self.verb!=0x7F or self.data!="http://goodfet.sf.net/":
+                while self.verb!=0x7F or self.data!=b"http://goodfet.sf.net/":
                     if attemptlimit is not None and attempts >= attemptlimit:
                         return
 
@@ -95,41 +93,32 @@ class GoodFETatmel128rfa1(GoodFETAVR):
                         break
             if self.verbose:
                 print("Connected after %02i attempts." % attempts);
-            self.serialport.setTimeout(12);
+            self.serialport.timeout = 12;
 
     def serClose(self):
         self.connected = 0
         self.serialport.close()
 
 
-    def writecmd(self, app, verb, count=0, data=[]):
-        """Write a command and some data to the GoodFET."""
-        self.serialport.write(chr(app));
-        self.serialport.write(chr(verb));
+    def writecmd(self, app, verb, count=0, data=None):
+        """Write a command and some data to the GoodFET.
+        data is any bytes-like object or sequence of ints; the first count
+        bytes are sent."""
+        payload = bytes(data[:count]) if (count > 0 and data) else b""
+        #little endian 16-bit length of what is actually sent
+        count = len(payload)
         if self.verbose:
             print("Tx: ( 0x%02x, 0x%02x, %d )" % ( app, verb, count ))
-        if count > 0:
-            if(isinstance(data,list)):
-                old = data
-                data = []
-                for i in range(0,count):
-                    data += chr(old[i]);
-            outstr=''.join(data);
-
-        #little endian 16-bit length
-            count = len(outstr)
-        self.serialport.write(chr(count&0xFF));
-        self.serialport.write(chr(count>>8));
+        self.serialport.write(bytes([app, verb, count&0xFF, count>>8]))
         if count > 0:
             if self.verbose:
-                print("sending: %s" %outstr.encode("hex"))
-            self.serialport.write(outstr);
-
+                print("sending: %s" % payload.hex())
+            self.serialport.write(payload);
 
         if not self.besilent:
             out = self.readcmd()
             if out and self.verbose:
-                print("read: " + out.encode("hex"))
+                print("read: " + bytes(out).hex())
             return out
         else:
             return None
@@ -146,21 +135,21 @@ class GoodFETatmel128rfa1(GoodFETAVR):
             self.app = 0
             self.verb = 0
             self.count = 0
-            self.data = ""
+            self.data = b""
             return
 
-        self.app=ord(app);
+        self.app=app[0];
 
         v = self.serialport.read(1);
         if v:
-            self.verb = ord(v)
+            self.verb = v[0]
         else:
             self.verb = 0
             
         c1 = self.serialport.read(1)
         c2 = self.serialport.read(1)
         if (c1 and c2):
-            self.count= ord(c1) + (ord(c2)<<8)
+            self.count= c1[0] + (c2[0]<<8)
         else:
             self.count = 0
         if self.verbose:
@@ -171,11 +160,11 @@ class GoodFETatmel128rfa1(GoodFETAVR):
             if self.verb==0xFF:
                 print("# DEBUG %s" % self.serialport.read(self.count))
             elif self.verb==0xFE:
-                print("# DEBUG 0x%x" % struct.unpack(fmt[self.count-1], self.serialport.read(self.count))[0])
+                print("# DEBUG 0x%x" % int.from_bytes(self.serialport.read(self.count), "little"))
             elif self.verb==0xFD:
-                        #Do nothing, just wait so there's no timeout.
+                #Do nothing, just wait so there's no timeout.
                 print("# NOP.");
-            return ""
+            return b""
         else:
             self.data=self.serialport.read(self.count);
             return self.data;
@@ -201,7 +190,7 @@ class GoodFETatmel128rfa1(GoodFETAVR):
             #    toret=toret|(ord(self.data[i+1])<<(8*i));
             #return toret;
             # right now only works with a byte of data
-            return ord(self.data)
+            return self.data[0]
         else:
             return -1
 
@@ -243,9 +232,7 @@ class GoodFETatmel128rfa1(GoodFETAVR):
             return None
 
     def RF_txpacket(self, payload):
-        if type(payload) == list: #convert to string
-            import array # type: ignore
-            payload = array.array('B', payload).tostring()
+        payload = bytes(payload) #accepts a list of ints or bytes-like
         self.writecmd(self.ATMELRADIOAPP, 0x81, len(payload), payload)
 
 

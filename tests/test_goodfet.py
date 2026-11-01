@@ -38,6 +38,7 @@ class FakeSerial:
         self.cts = 1
         self.closed = False
         self.frames = []
+        self._baud = 115200
 
     def read(self, n=1):
         if self.mute > 0:
@@ -83,11 +84,15 @@ class FakeSerial:
     def getCTS(self):
         return self.cts
 
-    def setBaudrate(self, b):
-        self.calls.append(("baud", b))
+    @property
+    def baudrate(self):
+        return self._baud
 
-    def setTimeout(self, t):
-        self.timeout = t
+    @baudrate.setter
+    def baudrate(self, b):
+        # pyserial 3 has no setBaudrate(); the property is the only API.
+        self._baud = b
+        self.calls.append(("baud", b))
 
     def inWaiting(self):
         return len(self.rx)
@@ -117,17 +122,15 @@ def fet():
 
 # ---------------------------------------------------------------- module level
 def test_getclient_branches(monkeypatch):
-    names = {
-        "GoodFET": "GoodFET", "GoodFETCC": "GoodFETCC", "GoodFETAVR": "GoodFETAVR",
-        "GoodFETSPI": "GoodFETSPI", "GoodFETMSP430": "GoodFETMSP430",
-        "GoodFETNRF": "GoodFETNRF", "GoodFETCCSPI": "GoodFETCCSPI",
-    }
-    for mod in names:
-        m = types.ModuleType(mod)
+    # Sibling modules are imported relatively (killerbee.GoodFETxx); stub the
+    # ones that do not exist in the package.
+    for mod in ("GoodFETCC", "GoodFETAVR", "GoodFETSPI", "GoodFETMSP430",
+                "GoodFETNRF", "GoodFETCCSPI"):
+        m = types.ModuleType("killerbee." + mod)
         setattr(m, mod, lambda mod=mod: "inst-" + mod)
-        monkeypatch.setitem(sys.modules, mod, m)
-    assert gf.getClient() == "inst-GoodFET"
-    assert gf.getClient("monitor") == "inst-GoodFET"
+        monkeypatch.setitem(sys.modules, "killerbee." + mod, m)
+    assert isinstance(gf.getClient(), gf.GoodFET)
+    assert isinstance(gf.getClient("monitor"), gf.GoodFET)
     assert gf.getClient("cc") == "inst-GoodFETCC"
     assert gf.getClient("cc51") == "inst-GoodFETCC"
     assert gf.getClient("cc2420") == "inst-GoodFETCCSPI"
@@ -140,10 +143,11 @@ def test_getclient_branches(monkeypatch):
         gf.getClient("bogus")
 
 
-@pytest.mark.xfail(strict=False, raises=ImportError,
-                   reason="getClient() uses py2-style absolute imports (import GoodFET, ...) that fail inside the package")
 def test_getclient_real_imports():
+    from killerbee import GoodFETAVR, GoodFETCCSPI
     assert isinstance(gf.getClient("GoodFET"), gf.GoodFET)
+    assert isinstance(gf.getClient("avr"), GoodFETAVR.GoodFETAVR)
+    assert isinstance(gf.getClient("ccspi"), GoodFETCCSPI.GoodFETCCSPI)
 
 
 def test_symbol_table():
@@ -159,9 +163,9 @@ def test_symbol_table():
 def test_misc_simple(fet, capsys, monkeypatch):
     fet.timeout()
     assert "timeout" in capsys.readouterr().out
-    m = types.ModuleType("GoodFETConsole")
+    m = types.ModuleType("killerbee.GoodFETConsole")
     m.GoodFETConsole = lambda c: ("console", c)
-    monkeypatch.setitem(sys.modules, "GoodFETConsole", m)
+    monkeypatch.setitem(sys.modules, "killerbee.GoodFETConsole", m)
     assert fet.getConsole() == ("console", fet)
     fet.serClose()
     assert fet.serialport.closed
@@ -312,6 +316,8 @@ def _slow_connect_serial(monkeypatch, mute_reads, echo=True):
             def responder(app, verb, payload):
                 if (app, verb) == (0, 0x81):
                     return frame(0, 0x81, payload)
+                if (app, verb) == (0, 0x02):   # monitor peek8
+                    return frame(0, 0x02, b"\x12")
                 return frame(app, verb, b"")
             s.responder = responder
         made.append(s)
@@ -339,8 +345,6 @@ def test_pyserinit_after_100_attempts_comm_error(monkeypatch, capsys):
     assert "Comm error" in capsys.readouterr().out
 
 
-@pytest.mark.xfail(strict=False, raises=(TypeError, IndexError),
-                   reason="py3: infostring()/MONpeek8 does ord(self.data[0]) on a bytearray (int)")
 def test_pyserinit_after_100_attempts_real_infostring(monkeypatch):
     _slow_connect_serial(monkeypatch, 260)
     f = gf.GoodFET()
@@ -414,6 +418,25 @@ def test_readcmd_debug_frames(fet, capsys):
     assert out == bytearray()
 
 
+def test_writecmd_no_data_is_zero_padded(fet):
+    fet.besilent = 1
+    fet.writecmd(0x40, 0x05, 3)             # data omitted
+    fet.writecmd(0x40, 0x06, 4, b"\x01")    # data too short
+    fet.writecmd(0x40, 0x07, 1, b"\x09\x08")  # data truncated to count
+    assert fet.serialport.frames == [
+        (0x40, 0x05, b"\0\0\0"), (0x40, 0x06, b"\x01\0\0\0"), (0x40, 0x07, b"\x09")]
+
+
+def test_readcmd_debug_3byte_and_partial_header(fet, capsys):
+    s = fet.serialport
+    s.rx += frame(0xFF, 0xFE, b"\x01\x02\x03") + frame(0x10, 0x01, b"ok")
+    assert fet.readcmd() == bytearray(b"ok")
+    assert "0x30201" in capsys.readouterr().out
+    fet.connected = 0
+    s.rx += bytes([0x10, 0x01, 0x05])      # truncated count field: timeout
+    assert fet.readcmd() == bytearray(b"ok")
+
+
 def test_readcmd_timeout(fet, capsys):
     fet.data = bytearray(b"old")
     fet.connected = 1
@@ -438,19 +461,12 @@ def test_glitch_functions(fet, capsys):
     assert s.frames[-1][:2] == (0x71, 0x81)
 
 
-def test_glitch_time_with_str_reply(fet, monkeypatch):
-    # Works only when the reply is a py2-style str, hence the stubbed writecmd.
-    monkeypatch.setattr(fet, "writecmd", lambda *a: setattr(fet, "data", "\x10\x01"))
-    fet.APP = 0x32
-    assert fet.glitchTime(0x32, 0x20, None) == 0x110
-    assert fet.glitchstarttime() == 0x110
-
-
-@pytest.mark.xfail(strict=False, raises=TypeError,
-                   reason="py3: glitchTime does ord() on bytearray element (int)")
-def test_glitch_time(fet):
+def test_glitch_time(fet, capsys):
     fet.serialport.responder = lambda a, v, d: frame(a, v, b"\x10\x01")
     assert fet.glitchTime(0x32, 0x20, None) == 0x110
+    assert "Timed to be 272" in capsys.readouterr().out
+    fet.APP = 0x32
+    assert fet.glitchstarttime() == 0x110
 
 
 def test_monitor_simple_commands(fet, capsys):
@@ -482,23 +498,16 @@ def test_monpeek_patched(fet, monkeypatch):
     assert fet.peekblock(0x10, 2) == [0x34, 0x12]
 
 
-def test_monpeek8_real_frame_and_py3_bug(fet):
+def test_monpeek8_real_frame(fet):
     fet.serialport.responder = lambda a, v, d: frame(a, v, b"\x7f")
-    with pytest.raises(TypeError):
-        fet.MONpeek8(0x1234)  # documents py3 bug: ord(int)
+    assert fet.MONpeek8(0x1234) == 0x7F
     assert fet.serialport.frames[-1] == (0, 0x02, b"\x34\x12")
 
 
-@pytest.mark.xfail(strict=False, raises=TypeError, reason="py3: MONpeek8 does ord(self.data[0]) on bytearray")
-def test_monpeek8_works(fet):
-    fet.serialport.responder = lambda a, v, d: frame(a, v, b"\x7f")
-    assert fet.MONpeek8(0x1234) == 0x7F
-
-
-@pytest.mark.xfail(strict=False, raises=TypeError, reason="py3: pokebyte does ord(self.data[0]) on bytearray")
 def test_pokebyte_works(fet):
     fet.serialport.responder = lambda a, v, d: frame(a, v, b"\x07")
     assert fet.pokebyte(0x1234, 7) == 7
+    assert fet.serialport.frames[-1] == (0, 0x03, b"\x34\x12\x07")
 
 
 def test_pokebyte_poke16_paths(fet, monkeypatch):
@@ -527,13 +536,6 @@ def test_dumpmem(fet, monkeypatch, capsys):
     assert "0002 0004" in capsys.readouterr().out
 
 
-def test_ram_depth(fet):
-    fet.serialport.responder = lambda a, v, d: frame(a, v, b"\x01\x02")
-    with pytest.raises(TypeError):  # py3 bug: ord(int)
-        fet.monitor_ram_depth()
-
-
-@pytest.mark.xfail(strict=False, raises=TypeError, reason="py3: monitor_ram_depth ord() on bytearray element")
 def test_ram_depth_works(fet):
     fet.serialport.responder = lambda a, v, d: frame(a, v, b"\x01\x02")
     assert fet.monitor_ram_depth() == 0x0201
@@ -563,7 +565,7 @@ def test_set_baud_and_findbaud(fet, capsys):
     fet.setBaud(2)
     s = fet.serialport
     assert ("baud", 19200) in s.calls
-    assert s.frames == [] or True
+    assert s.baudrate == 19200
     assert bytes(s.tx).startswith(bytes([0, 0x80, 1, 2]))
     s.fill = 0x41
     fet.findbaud()

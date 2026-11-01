@@ -42,8 +42,7 @@ class GoodFETCCSPI(GoodFET):
             return "Unknown0x%04x" % manfidl;
     def trans8(self,byte):
         """Read and write 8 bits by CCSPI."""
-        data=self.CCSPItrans([byte]);
-        return data[0];
+        return self.trans([byte])[0];
     
     def trans(self,data):
         """Exchange data by CCSPI."""
@@ -157,7 +156,7 @@ class GoodFETCCSPI(GoodFET):
     
     def RF_setfreq(self,frequency):
         """Set the frequency in Hz."""
-        mhz=frequency/1000000;
+        mhz=frequency//1000000;
         #fsctrl=0x8000; #
         fsctrl=self.peek(0x18)&(~0x3FF);
         fsctrl=fsctrl+int(mhz-2048)
@@ -204,16 +203,15 @@ class GoodFETCCSPI(GoodFET):
         return self.data;
     def pokeram(self,adr,data):
         """Pokes data into CC2420 RAM."""
-        data=[adr&0xFF, adr>>8]+data;
+        data=[adr&0xFF, adr>>8]+list(data);
         self.writecmd(self.CCSPIAPP,0x85,len(data),data);
         return;
     
     lastpacket: bytearray = bytearray(list(range(0,0xff)));
 
     def RF_txrxpacket(self,packet,timeout=1):
-        data="\0";
-        self.data=data;
-        packet = [timeout&0xff, timeout>>8] + packet
+        self.data=bytearray(1);
+        packet = [timeout&0xff, timeout>>8] + list(packet)
 
         self.writecmd(self.CCSPIAPP,0x86,len(packet),packet);
         buffer=self.data;
@@ -365,8 +363,7 @@ class GoodFETCCSPI(GoodFET):
     def RF_getpacketlen(self):
         """Set the number of bytes in the expected payload."""
         #len=self.peek(0x11);
-        self.packetlen=len;
-        return len;
+        return self.packetlen;
     maclen=5;
     def RF_getmaclen(self):
         """Get the number of bytes in the MAC address."""
@@ -384,11 +381,7 @@ class GoodFETCCSPI(GoodFET):
     def printpacket(self,packet,prefix="#"):
         print(self.packet2str(packet,prefix));
     def packet2str(self,packet,prefix="#"):
-        s="";
-        i=0;
-        for foo in packet:
-            s="%s %02x" % (s,ord(foo));
-        return "%s%s" % (prefix,s);
+        return prefix+"".join(" %02x" % foo for foo in packet);
         
     def printdissect(self,packet):
         try:

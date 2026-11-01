@@ -29,8 +29,6 @@ class FakeSerial:
         self.timeout = kwargs.get("timeout")
         self.rx = bytearray()
         self.responder = None
-        self.py2 = False          # read() returns str, write() accepts str
-        self.accept_str = False
         self.pending = bytearray()
         self.frames = []
         self.calls = []
@@ -39,13 +37,11 @@ class FakeSerial:
     def read(self, n=1):
         out = bytes(self.rx[:n])
         del self.rx[:n]
-        return out.decode("latin-1") if self.py2 else out
+        return out
 
     def write(self, data):
         if isinstance(data, str):
-            if not (self.accept_str or self.py2):
-                raise TypeError("a bytes-like object is required, not 'str'")
-            data = data.encode("latin-1")
+            raise TypeError("a bytes-like object is required, not 'str'")
         data = bytes(data)
         self.pending += data
         while len(self.pending) >= 4:
@@ -75,8 +71,6 @@ class FakeSerial:
     def getCTS(self):
         return 1
 
-    def setTimeout(self, t):
-        self.timeout = t
 
 
 BANNER = frame(0x00, 0x7F, b"http://goodfet.sf.net/")
@@ -172,7 +166,7 @@ class TestAVR:
         return f, calls
 
     def test_simple_commands(self):
-        f, calls = self.make("", "", "", "")
+        f, calls = self.make(b"", b"", b"", b"")
         f.setup()
         f.start()
         f.erase()
@@ -186,24 +180,24 @@ class TestAVR:
         assert calls[0][:3] == (0x32, 0x00, 4)
 
     def test_lockbits_and_set(self):
-        f, calls = self.make("\xff", "", "\xfc")
+        f, calls = self.make(b"\xff", b"", b"\xfc")
         assert f.lockbits() == 0xFF
         assert f.setlockbits(0xFC) == 0xFC
         assert calls[1][:3] == (0x32, 0x92, 1)
 
     def test_lock(self):
-        f, calls = self.make("", "\xfc")
+        f, calls = self.make(b"", b"\xfc")
         f.lock()
         assert calls[0][3] == [0xFC]
 
     def test_forcestart(self, capsys):
-        f, calls = self.make("\x00", "\x00", "\xff")
+        f, calls = self.make(b"\x00", b"\x00", b"\xff")
         f.start = lambda: None
         f.forcestart()
         assert "Lockbits: ff" in capsys.readouterr().out
 
     def test_eeprom_flash_peek_poke(self):
-        f, calls = self.make("\x11", "\x22", "\x33")
+        f, calls = self.make(b"\x11", b"\x22", b"\x33")
         assert f.eeprompeek(0x1234) == 0x11
         assert f.flashpeek(0x1234) == 0x22
         assert f.eeprompoke(0x10, 0x33) == 0x33
@@ -215,25 +209,23 @@ class TestAVR:
         assert calls[0][3] == [0x02, 0x01, 0x80, 0x00]
 
     def test_identstr_known_and_unknown(self):
-        f, _ = self.make("\x1e\x97\x02", "\x1e\x12\x34", "\x00\x97\x02")
+        f, _ = self.make(b"\x1e\x97\x02", b"\x1e\x12\x34", b"\x00\x97\x02")
         assert f.identstr() == "Atmel ATmega128"
         assert f.identstr() == "Atmel 0x1234"
         assert f.identstr() == "Locked ATmega128"
 
-    def test_py3_bytes_replies_break_ord(self):
-        # Real wire path: replies are bytearray, ord(int) raises.
-        f = avrmod.GoodFETAVR()
-        f.serialport = FakeSerial()
-        f.serialport.responder = lambda a, v, d: frame(a, v, b"\xff")
-        with pytest.raises(TypeError):
-            f.lockbits()
-
-    @pytest.mark.xfail(strict=False, raises=TypeError, reason="py3: GoodFETAVR does ord(self.data[0]) on bytearray")
     def test_lockbits_real_wire(self):
         f = avrmod.GoodFETAVR()
         f.serialport = FakeSerial()
         f.serialport.responder = lambda a, v, d: frame(a, v, b"\xff")
         assert f.lockbits() == 0xFF
+        assert f.serialport.frames == [(0x32, 0x82, b"")]
+
+    def test_identstr_real_wire(self):
+        f = avrmod.GoodFETAVR()
+        f.serialport = FakeSerial()
+        f.serialport.responder = lambda a, v, d: frame(a, v, b"\x1e\x97\x02")
+        assert f.identstr() == "Atmel ATmega128"
 
 
 # ===================================================================== CCSPI
@@ -260,10 +252,9 @@ class TestCCSPI:
         cc_device.regs[0x1E] = 0x1111
         assert cc.identstr() == "Unknown0x1111"
 
-    def test_trans8_py3_bug(self, cc):
-        # CCSPItrans is not defined on the class at all.
-        with pytest.raises(AttributeError):
-            cc.trans8(1)
+    def test_trans8(self, cc, cc_device):
+        assert cc.trans8(0x07) == cc_device.status
+        assert cc_device.strobes == [0x07]
 
     def test_strobes(self, cc, cc_device):
         cc.CC_RFST_IDLE()
@@ -334,9 +325,11 @@ class TestCCSPI:
     def test_ram(self, cc, cc_device):
         assert cc.peekram(0x100, 4) == bytearray(range(16))
         cc.pokeram(0x100, [1, 2])
+        cc.pokeram(0x100, b"\x03\x04")
 
     def test_txrxpacket(self, cc, cc_device):
         assert cc.RF_txrxpacket([1, 2]) is None
+        assert cc.RF_txrxpacket(b"\x01\x02") is None   # bytes accepted too
         cc_device.rxq.append(b"\x03abc")
         assert cc.RF_txrxpacket([1, 2], timeout=300) == bytearray(b"\x03abc")
 
@@ -385,20 +378,17 @@ class TestCCSPI:
     def test_packet_and_mac_len(self, cc, cc_device):
         cc.RF_setpacketlen(20)
         assert cc.packetlen == 20
-        assert cc.RF_getpacketlen() is len  # documents quirk: returns builtin len
+        assert cc.RF_getpacketlen() == 20
         cc_device.regs[0x03] = 0x0002
         assert cc.RF_getmaclen() == 4
         cc.RF_setmaclen(4)
         assert cc_device.regs[0x03] == 2 and cc.maclen == 4
 
-    @pytest.mark.xfail(strict=False, raises=TypeError, reason="py3: packet2str does ord() on an int")
     def test_packet2str(self, cc, capsys):
         assert cc.packet2str(b"\x01\xff") == "# 01 ff"
-        cc.printpacket(b"\x01\xff")
-
-    def test_packet2str_str_packet(self, cc, capsys):
-        assert cc.packet2str("\x01\xff") == "# 01 ff"
-        cc.printpacket("\x01")
+        assert cc.packet2str(bytearray(b"\x0a"), prefix=">") == "> 0a"
+        assert cc.packet2str([]) == "#"
+        cc.printpacket(b"\x01")
         assert "# 01" in capsys.readouterr().out
 
     def test_printdissect(self, cc, monkeypatch):
@@ -425,9 +415,7 @@ class TestCCSPI:
 @pytest.fixture
 def at(monkeypatch):
     f = atmod.GoodFETatmel128rfa1()
-    s = FakeSerial()
-    s.accept_str = True
-    f.serialport = s
+    f.serialport = FakeSerial()
     return f
 
 
@@ -439,36 +427,26 @@ class TestAtmel128:
         assert s.frames[0] == (0x53, 0x03, b"\x01\x80")
         assert out == b"\x05"
 
-    def test_writecmd_str_data_and_silent(self, at):
+    def test_writecmd_bytes_data_and_silent(self, at):
         s = at.serialport
         at.besilent = 1
-        assert at.writecmd(1, 2, 3, "abc") is None
+        assert at.writecmd(1, 2, 3, b"abc") is None
         assert s.frames[0][2] == b"abc"
 
-    def test_writecmd_bytes_data_py3_bug(self, at):
-        with pytest.raises(TypeError):
-            at.writecmd(1, 2, 3, b"abc")
-
-    @pytest.mark.xfail(strict=False, raises=TypeError,
-                       reason="py3: writecmd writes chr() str to pyserial and joins bytes data")
-    def test_writecmd_real_serial_bytes_only(self):
+    def test_writecmd_no_data(self):
         f = atmod.GoodFETatmel128rfa1()
         f.serialport = FakeSerial()
-        f.writecmd(1, 2)
+        f.serialport.responder = lambda a, v, d: frame(a, v)
+        assert f.writecmd(1, 2) == b""
+        assert f.writecmd(1, 3, 4) == b""   # count without data: nothing to send
+        assert f.serialport.frames == [(1, 2, b""), (1, 3, b"")]
 
-    @pytest.mark.xfail(strict=False, raises=(LookupError, AttributeError),
-                       reason="py3: verbose branches use str.encode('hex')")
-    def test_writecmd_verbose(self, at):
+    def test_writecmd_verbose(self, at, capsys):
         at.verbose = True
         at.serialport.responder = lambda a, v, d: frame(a, v, b"\x05")
-        at.writecmd(1, 2, 1, [5])
-
-    @pytest.mark.xfail(strict=False, raises=(LookupError, AttributeError),
-                       reason="py3: verbose read branch uses bytes.encode('hex')")
-    def test_writecmd_verbose_read(self, at):
-        at.verbose = True
-        at.serialport.responder = lambda a, v, d: frame(a, v, b"\x05")
-        at.writecmd(1, 2)
+        assert at.writecmd(1, 2, 1, [5]) == b"\x05"
+        out = capsys.readouterr().out
+        assert "sending: 05" in out and "read: 05" in out
 
     def test_serinit_env_without_glob_match(self, at, monkeypatch):
         import serial
@@ -496,13 +474,13 @@ class TestAtmel128:
     def test_readcmd_debug(self, at, capsys):
         s = at.serialport
         s.rx += frame(0xFF, 0xFF, b"hi")
-        assert at.readcmd() == ""
+        assert at.readcmd() == b""
         s.rx += frame(0xFF, 0xFE, struct.pack("<H", 0x0102))
-        assert at.readcmd() == ""
+        assert at.readcmd() == b""
         s.rx += frame(0xFF, 0xFD)
-        assert at.readcmd() == ""
+        assert at.readcmd() == b""
         out = capsys.readouterr().out
-        assert "DEBUG" in out and "NOP" in out
+        assert "DEBUG" in out and "NOP" in out and "0x102" in out
         s.rx += frame(0x10, 0x01, b"data")
         at.verbose = True
         assert at.readcmd() == b"data"
@@ -551,15 +529,12 @@ class TestAtmel128:
         assert at.RF_rxpacket() == b"pkt"
         assert at.packetlen == 3
 
-    def test_txpacket_str_and_list(self, at):
+    def test_txpacket_bytes_and_list(self, at):
         at.serialport.responder = lambda a, v, d: frame(a, v)
-        at.RF_txpacket("abc")
+        at.RF_txpacket(b"abc")
         assert at.serialport.frames[-1][:3] == (0x53, 0x81, b"abc")
-
-    @pytest.mark.xfail(strict=False, raises=AttributeError, reason="py3: array.array.tostring() was removed")
-    def test_txpacket_list(self, at):
-        at.serialport.responder = lambda a, v, d: frame(a, v)
         at.RF_txpacket([1, 2, 3])
+        assert at.serialport.frames[-1][:3] == (0x53, 0x81, b"\x01\x02\x03")
 
     def test_rssi(self, at):
         vals = iter([0, 0x10, 0x7f])
@@ -588,7 +563,6 @@ class TestAtmel128:
 
         def factory(*a, **k):
             s = FakeSerial(*a, **k)
-            s.py2 = True
             s.rx += BANNER
             s.responder = lambda a_, v, d: frame(a_, v, d)
             made.append(s)
@@ -801,8 +775,6 @@ class TestTelosB:
         with pytest.raises(Exception, match="SubGHz"):
             telos.set_channel(15, page=1)
 
-    @pytest.mark.xfail(strict=False,
-                       reason="channel check uses 'or' (>=11 or <=26) so invalid channels are never rejected")
     def test_invalid_channel_rejected(self, telos):
         with pytest.raises(Exception, match="Invalid channel"):
             telos.set_channel(5)

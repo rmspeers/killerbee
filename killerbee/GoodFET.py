@@ -9,6 +9,7 @@ from typing import Dict, Union, Optional, Any, List, Tuple
 
 import sys 
 import time
+import importlib
 import string
 import io
 import struct
@@ -16,18 +17,28 @@ import glob
 import os; 
 import sqlite3; 
 
-fmt: Tuple[str, str, str, str] = ("B", "<H", "<3S", "<L")
+# Maps a target name to the (sibling module, class) implementing its client.
+# Siblings are imported lazily and relatively, since this module lives inside
+# the killerbee package (py2-style implicit relative imports do not work).
+_CLIENTS: Dict[str, Tuple[str, str]] = {
+    "cc": ("GoodFETCC", "GoodFETCC"),
+    "cc51": ("GoodFETCC", "GoodFETCC"),
+    "cc2420": ("GoodFETCCSPI", "GoodFETCCSPI"),
+    "ccspi": ("GoodFETCCSPI", "GoodFETCCSPI"),
+    "avr": ("GoodFETAVR", "GoodFETAVR"),
+    "spi": ("GoodFETSPI", "GoodFETSPI"),
+    "msp430": ("GoodFETMSP430", "GoodFETMSP430"),
+    "nrf": ("GoodFETNRF", "GoodFETNRF"),
+}
 
 def getClient(name="GoodFET") -> Any:
-    import GoodFET, GoodFETCC, GoodFETAVR, GoodFETSPI, GoodFETMSP430, GoodFETNRF, GoodFETCCSPI; # type: ignore
-    if(name=="GoodFET" or name=="monitor"): return GoodFET.GoodFET();
-    elif name=="cc" or name=="cc51": return GoodFETCC.GoodFETCC();
-    elif name=="cc2420" or name=="ccspi": return GoodFETCCSPI.GoodFETCCSPI();
-    elif name=="avr": return GoodFETAVR.GoodFETAVR();
-    elif name=="spi": return GoodFETSPI.GoodFETSPI();
-    elif name=="msp430": return GoodFETMSP430.GoodFETMSP430();
-    elif name=="nrf": return GoodFETNRF.GoodFETNRF();
-    
+    if name == "GoodFET" or name == "monitor":
+        return GoodFET()
+    if name in _CLIENTS:
+        modname, clsname = _CLIENTS[name]
+        module = importlib.import_module("." + modname, __package__)
+        return getattr(module, clsname)()
+
     print("Unsupported target: {}".format(name))
     sys.exit(0);
 
@@ -76,7 +87,7 @@ class GoodFET:
         self.data: bytearray = bytearray([]); 
 
     def getConsole(self) -> Any:
-        from GoodFETConsole import GoodFETConsole; # type: ignore
+        from .GoodFETConsole import GoodFETConsole; # type: ignore
         return GoodFETConsole(self);
 
     def name2adr(self, name: str) -> str:
@@ -370,9 +381,10 @@ class GoodFET:
             print("Tx: ( {0}, {1}, {2} )".format( app, verb, count ))
         
         if count != 0:
-            if data is not None:
-                out: bytearray = bytearray(data[:count])
-
+            # Always send exactly `count` bytes so the frame stays in sync,
+            # zero-padding if the caller supplied no (or too little) data.
+            out: bytearray = bytearray(data[:count]) if data is not None else bytearray()
+            out.extend(bytes(count - len(out)))
             self.serialport.write(out)
 
         if not self.besilent:
@@ -380,45 +392,49 @@ class GoodFET:
         else:
             return bytearray([0])
 
+    def _readbyte(self) -> Optional[int]:
+        """Read one byte from the serial port; None if the read timed out."""
+        b: bytes = self.serialport.read(1)
+        return b[0] if b else None
+
     def readcmd(self) -> bytearray:
         """Read a reply from the GoodFET."""
         while 1:
-            try:
-                self.app = ord(self.serialport.read(1));
-                self.verb = ord(self.serialport.read(1));
-                
+            app = self._readbyte()
+            verb = self._readbyte() if app is not None else None
+            if app is not None and app == 0x00:
                 #Fixes an obscure bug in the TelosB.
-                if self.app == 0x00:
-                    while self.verb == 0x00:
-                        self.verb = ord(self.serialport.read(1));
-               
-                self.count=(
-                    ord(self.serialport.read(1)) + (ord(self.serialport.read(1))<<8)
-                );
+                while verb == 0x00:
+                    verb = self._readbyte()
+            lo = self._readbyte() if verb is not None else None
+            hi = self._readbyte() if lo is not None else None
 
-                if self.verbose:
-                    print("Rx: ( {0}, {1}, {2} )".format( self.app, self.verb, self.count ))
-            
-                #Debugging string; print, but wait.
-                if self.app == 0xFF:
-                    if self.verb == 0xFF:
-                        print("# DEBUG %s" % self.serialport.read(self.count))
-
-               	    elif self.verb==0xFE:
-                        print("# DEBUG 0x{:x}".format(struct.unpack(fmt[self.count-1], self.serialport.read(self.count))[0]))
-                    elif self.verb==0xFD:
-                        print("# NOP.")
-                        
-                    sys.stdout.flush();
-
-                else:
-                    self.data = bytearray(self.serialport.read(self.count))
-                    return self.data;
-
-            except TypeError:
+            if hi is None:
                 if self.connected:
                     print("Warning: waiting for serial read timed out (most likely).")
                     #sys.exit(-1)
+                return self.data;
+
+            self.app, self.verb, self.count = app, verb, lo + (hi << 8)
+
+            if self.verbose:
+                print("Rx: ( {0}, {1}, {2} )".format( self.app, self.verb, self.count ))
+
+            #Debugging string; print, but wait.
+            if self.app == 0xFF:
+                if self.verb == 0xFF:
+                    print("# DEBUG %s" % self.serialport.read(self.count))
+                elif self.verb == 0xFE:
+                    # Little-endian integer of 1 to 4 bytes.
+                    value = int.from_bytes(self.serialport.read(self.count), "little")
+                    print("# DEBUG 0x{:x}".format(value))
+                elif self.verb == 0xFD:
+                    print("# NOP.")
+
+                sys.stdout.flush();
+
+            else:
+                self.data = bytearray(self.serialport.read(self.count))
                 return self.data;
 
     #Glitching stuff.
@@ -445,9 +461,9 @@ class GoodFET:
         self.data=[app&0xff, verb&0xFF]+data;
         print("Timing app %02x verb %02x." % (app,verb));
         self.writecmd(self.GLITCHAPP,0x82,len(self.data),self.data);
-        time=ord(self.data[0])+(ord(self.data[1])<<8);
-        print("Timed to be %i." % time);
-        return time;
+        elapsed=int.from_bytes(self.data[:2],"little");
+        print("Timed to be %i." % elapsed);
+        return elapsed;
     def glitchVoltages(self,low=0x0880, high=0x0fff):
         """Set glitching voltages. (0x0fff is max.)"""
         self.data=[low&0xff, (low>>8)&0xff,
@@ -491,7 +507,7 @@ class GoodFET:
         self.data=[address&0xff,address>>8];
         self.writecmd(0,0x02,2,self.data);
         #self.readcmd();
-        return ord(self.data[0]);
+        return self.data[0];
     def MONpeek16(self,address):
         """Read a word of memory from the monitor."""
         return self.MONpeek8(address)+(self.MONpeek8(address+1)<<8);
@@ -516,7 +532,7 @@ class GoodFET:
         """Set a byte of memory by the monitor."""
         self.data=[address&0xff,address>>8,value];
         self.writecmd(0,0x03,3,self.data);
-        return ord(self.data[0]);
+        return self.data[0];
     def poke16(self,address,value):
         """Set a word of memory by the monitor."""
         self.MONpoke16(address,value);
@@ -551,7 +567,7 @@ class GoodFET:
     def monitor_ram_depth(self):
         """Determine how many bytes of RAM are unused by looking for 0xBEEF.."""
         self.writecmd(0,0x91,0,self.data);
-        return ord(self.data[0])+(ord(self.data[1])<<8);
+        return int.from_bytes(self.data[:2],"little");
     
     #Baud rates
     baudrates=[115200, 
@@ -568,7 +584,7 @@ class GoodFET:
         self.serialport.write(bytearray([0x00, 0x80, 1, baud]))
 
         print("Changed host baud.")
-        self.serialport.setBaudrate(rates[baud]);
+        self.serialport.baudrate=rates[baud];
         time.sleep(1);
         self.serialport.flushInput()
         self.serialport.flushOutput()
@@ -576,11 +592,11 @@ class GoodFET:
         print("Baud is now %i." % rates[baud]);
         return;
     def readbyte(self):
-        return ord(self.serialport.read(1));
+        return self.serialport.read(1)[0];
     def findbaud(self):
         for r in self.baudrates:
             print("\nTrying %i" % r);
-            self.serialport.setBaudrate(r);
+            self.serialport.baudrate=r;
             #time.sleep(1);
             self.serialport.flushInput()
             self.serialport.flushOutput()
@@ -626,9 +642,9 @@ class GoodFET:
     def testleds(self):
         print("Flashing LEDs")
         self.writecmd(self.MONITORAPP,0xD0,0,b"")
-        try:
-            print("Flashed %d LED." % ord(self.data))
-        except:
+        if len(self.data) == 1:
+            print("Flashed %d LED." % self.data[0])
+        else:
             print("Unable to process response:", self.data)
         return 1
 
@@ -641,13 +657,13 @@ class GoodFET:
         
         # read the build date string 
         self.readcmd()
-        print("Build Date: %s" % self.data)
+        print("Build Date: %s" % bytes(self.data).decode("latin-1"))
         print("Firmware apps:")
         while True:
             self.readcmd()
             if self.count == 0:
                 break
-            print(self.data)
+            print(bytes(self.data).decode("latin-1"))
         return 1;
 
     def monitorclocking(self):

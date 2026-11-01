@@ -115,7 +115,7 @@ class GoodFETAVR(GoodFET):
     def lockbits(self):
         """Read the target's lockbits."""
         self.writecmd(self.AVRAPP,0x82,0,None);
-        return ord(self.data[0]);
+        return self.data[0];
     def setlockbits(self,bits=0x00):
         """Read the target's lockbits."""
         self.writecmd(self.AVRAPP,0x92,1,[bits]);
@@ -127,13 +127,13 @@ class GoodFETAVR(GoodFET):
         self.writecmd(self.AVRAPP,0x81 ,2,
                       [ (adr&0xFF), (adr>>8)]
                       );#little-endian address
-        return ord(self.data[0]);
+        return self.data[0];
     def flashpeek(self, adr):
         """Read a byte of the target's Flash memory."""
         self.writecmd(self.AVRAPP,0x02 ,2,
                       [ (adr&0xFF), (adr>>8)]
                       );#little-endian address
-        return ord(self.data[0]);
+        return self.data[0];
     def flashpeekblock(self, adr):
         """Read a byte of the target's Flash memory."""
         self.writecmd(self.AVRAPP,0x02 ,4,
@@ -146,13 +146,13 @@ class GoodFETAVR(GoodFET):
         self.writecmd(self.AVRAPP,0x91 ,3,
                       [ (adr&0xFF), (adr>>8), val]
                       );#little-endian address
-        return ord(self.data[0]);
+        return self.data[0];
     
     def identstr(self):
         """Return an identifying string."""
         self.writecmd(self.AVRAPP,0x83,0, None);
-        vendor=self.AVRVendors.get(ord(self.data[0]));
-        deviceid=(ord(self.data[1])<<8)+ord(self.data[2]);
+        vendor=self.AVRVendors.get(self.data[0]);
+        deviceid=int.from_bytes(self.data[1:3],"big");
         device=self.AVRDevices.get(deviceid);
         
         #Return hex if device is unknown.
