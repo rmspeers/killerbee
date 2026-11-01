@@ -45,3 +45,15 @@ They also warrant that they have the right to contribute code in this way, and t
 Questions
 ==============
 Please use the ticketing system at https://github.com/riverloopsec/killerbee/issues.
+
+## Linting and formatting
+
+Python code is checked and formatted with [ruff](https://docs.astral.sh/ruff/) through [pre-commit](https://pre-commit.com/). Set it up once, then it runs on every commit:
+
+```
+pip install pre-commit
+pre-commit install
+pre-commit run --all-files   # check everything manually
+```
+
+The ruff rules and ignores live in `pyproject.toml`. Run the tests with `pip install -e '.[test]' && pytest`; they use mocked hardware unless `APIMOTE_DEVSTRING` is set.

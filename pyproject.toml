@@ -36,3 +36,36 @@ script-files = [
     "tools/zborphannotify", "tools/zbpanidconflictflood", "tools/zbrealign", "tools/zbcat",
     "tools/zbjammer", "tools/kbbootloader",
 ]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+force-exclude = true
+extend-include = ["tools/*", "scripts/*"]
+extend-exclude = ["build", "doc", "firmware", "scripts/*.sql", "scripts/*.sh"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",    # line length is handled by the formatter
+    "F401",    # package __init__ re-exports; tests patch module attributes
+    "F403",    # tools use `from killerbee import *` by design
+    "F405",
+    "E402",    # tools set up sys.path / env before importing
+    "E722",    # bare except is used around flaky hardware I/O
+    "UP031",   # legacy % formatting is widespread; convert opportunistically
+    "UP032",
+    "UP030",
+    "B007",
+    "B904",
+    "UP035",   # typing.List/Dict imports remain re-exported via star imports
+    "B026",    # kbtshark passes *args after a keyword on purpose
+    "F601",    # GoodFETAVR device-id table has duplicate ids; needs data cleanup
+    "F841",    # legacy unused locals; clean up opportunistically
+    "E712",    # == True/False comparisons in legacy driver code
+    "E731",
+    "E741",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011", "B017", "E741"]

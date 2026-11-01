@@ -1,0 +1,22 @@
+# Install once with:  pip install pre-commit && pre-commit install
+exclude: ^(firmware|doc|sample|tests/fixtures)/|\.md$|^LICENSE\.txt$
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(firmware|doc|sample)/
+      - id: end-of-file-fixer
+        exclude: ^(firmware|doc|sample|tests/fixtures)/
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: debug-statements
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.10
+    hooks:
+      - id: ruff
+        args: ["--fix", "--exit-non-zero-on-fix"]
+      - id: ruff-format
